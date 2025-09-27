@@ -393,3 +393,72 @@ fn normalize_command(input: &str) -> String {
     }
     normalized.trim().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use tempfile::tempdir;
+
+    #[test]
+    fn discover_curl_files_finds_requests() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let foo = base.join("foo.curl");
+        let bar = base.join("nested/bar.curl");
+        std::fs::write(&foo, "GET https://example.com")?;
+        std::fs::create_dir_all(bar.parent().unwrap())?;
+        std::fs::write(&bar, "POST https://example.com")?;
+        std::fs::write(base.join("ignore.txt"), "noop")?;
+
+        let files = discover_curl_files(base)?;
+        let relative_paths: Vec<_> = files.iter().map(|f| f.relative.clone()).collect();
+
+        assert_eq!(files.len(), 2);
+        assert!(relative_paths.contains(&PathBuf::from("foo.curl")));
+        assert!(relative_paths.contains(&PathBuf::from("nested/bar.curl")));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_save_path_adds_extension_and_respects_directory_hint() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let path = resolve_save_path(base, "requests/", "default.curl");
+        assert_eq!(path, base.join("requests/default.curl"));
+
+        let explicit = resolve_save_path(base, "output/test.req", "default.curl");
+        assert_eq!(explicit, base.join("output/test.curl"));
+        Ok(())
+    }
+
+    #[test]
+    fn format_size_represents_ranges() {
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(2048), "2.0 KiB");
+        assert_eq!(format_size(2 * 1024 * 1024), "2.0 MiB");
+    }
+
+    #[test]
+    fn format_relative_handles_recent_durations() {
+        let now = SystemTime::now();
+        assert_eq!(format_relative(now), "0s ago");
+        assert_eq!(format_relative(now - Duration::from_secs(45)), "45s ago");
+        assert_eq!(format_relative(now - Duration::from_secs(600)), "10m ago");
+        assert_eq!(format_relative(now - Duration::from_secs(7200)), "2h ago");
+    }
+
+    #[test]
+    fn normalize_command_merges_continuation_lines() {
+        let input = concat!(
+            "curl https://example.com \\",
+            "\n",
+            "  -H 'Accept: application/json'"
+        );
+        let normalized = normalize_command(input);
+        assert_eq!(
+            normalized,
+            "curl https://example.com    -H 'Accept: application/json'"
+        );
+    }
+}

@@ -1,95 +1,12 @@
-use std::collections::HashMap;
-use std::str::FromStr;
-
 use anyhow::{anyhow, Result};
-use chrono::Utc;
-use curl_parser::ParsedRequest;
 use shell_words::split;
-use url::Url;
 
-#[derive(Debug, Clone)]
-pub struct ImportOptions<'a> {
-    pub command: &'a str,
-    pub template_variables: &'a HashMap<String, String>,
-    pub env_variables: &'a HashMap<String, String>,
-}
+use super::model::{ImportOptions, ImportResult};
+use super::substitutions::{
+    apply_substitutions, build_substitutions, format_curl_contents, suggest_file_name,
+};
 
-#[derive(Debug, Clone)]
-pub struct ImportResult {
-    pub contents: String,
-    pub suggested_filename: Option<String>,
-    pub method: String,
-    pub url: String,
-    pub warnings: Vec<String>,
-}
-
-pub fn import_curl_command(options: &ImportOptions<'_>) -> Result<ImportResult> {
-    match import_via_curl_parser(options) {
-        Ok(result) => Ok(result),
-        Err(primary) => {
-            import_via_manual(options).map_err(|fallback| anyhow!("{}\n{}", primary, fallback))
-        }
-    }
-}
-
-fn import_via_curl_parser(options: &ImportOptions<'_>) -> Result<ImportResult> {
-    let parsed = ParsedRequest::from_str(options.command.trim())
-        .map_err(|error| anyhow!("Failed to parse curl command: {error}"))?;
-
-    let method = parsed.method.as_str().to_string();
-    let url = parsed.url.to_string();
-
-    let mut warnings = Vec::new();
-    if parsed.insecure {
-        warnings.push("--insecure detected; certificate validation disabled".to_string());
-    }
-
-    let headers: Vec<(String, String)> = parsed
-        .headers
-        .iter()
-        .map(|(name, value)| {
-            (
-                name.to_string(),
-                value.to_str().unwrap_or_default().to_string(),
-            )
-        })
-        .collect();
-
-    let body_text = if parsed.body.is_empty() {
-        None
-    } else {
-        Some(parsed.body.join("\n"))
-    };
-
-    let substitutions = build_substitutions(options.template_variables, options.env_variables);
-
-    let substituted_url = apply_substitutions(&url, &substitutions);
-    let substituted_headers: Vec<(String, String)> = headers
-        .iter()
-        .map(|(name, value)| (name.clone(), apply_substitutions(value, &substitutions)))
-        .collect();
-    let substituted_body = body_text
-        .as_ref()
-        .map(|body| apply_substitutions(body, &substitutions));
-
-    let contents = format_curl_contents(
-        &method,
-        &substituted_url,
-        &substituted_headers,
-        substituted_body.as_deref(),
-        &warnings,
-    );
-
-    Ok(ImportResult {
-        contents,
-        suggested_filename: suggest_file_name(&method, &url),
-        method,
-        url: substituted_url,
-        warnings,
-    })
-}
-
-fn import_via_manual(options: &ImportOptions<'_>) -> Result<ImportResult> {
+pub(crate) fn import_via_manual(options: &ImportOptions<'_>) -> Result<ImportResult> {
     let tokens = split(options.command.trim()).map_err(|err| anyhow!("{err}"))?;
     if tokens.is_empty() {
         return Err(anyhow!("No command provided"));
@@ -333,102 +250,12 @@ fn build_basic_auth_header(value: &str) -> (String, String) {
     ("Authorization".to_string(), format!("Basic {}", value))
 }
 
-fn build_substitutions(
-    template_vars: &HashMap<String, String>,
-    env_vars: &HashMap<String, String>,
-) -> Vec<(String, String)> {
-    let mut entries: Vec<(String, String)> = template_vars
-        .iter()
-        .chain(env_vars.iter())
-        .filter_map(|(key, value)| {
-            if value.is_empty() {
-                None
-            } else {
-                Some((key.clone(), value.clone()))
-            }
-        })
-        .collect();
-
-    entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-    entries
-}
-
-fn apply_substitutions(input: &str, substitutions: &[(String, String)]) -> String {
-    let mut output = input.to_string();
-    for (key, value) in substitutions {
-        if !value.is_empty() && output.contains(value) {
-            output = output.replace(value, &format!("{{{key}}}"));
-        }
-    }
-    output
-}
-
-fn format_curl_contents(
-    method: &str,
-    url: &str,
-    headers: &[(String, String)],
-    body_text: Option<&str>,
-    warnings: &[String],
-) -> String {
-    let mut lines = Vec::new();
-    let timestamp = Utc::now().to_rfc3339();
-    lines.push(format!("# Imported by curlpit on {timestamp}"));
-    for warning in warnings {
-        lines.push(format!("# WARNING: {warning}"));
-    }
-
-    lines.push(format!("{method} {url}"));
-    for (name, value) in headers {
-        lines.push(format!("{}: {}", name, value));
-    }
-
-    if body_text.is_some() {
-        lines.push(String::new());
-    }
-
-    if let Some(text) = body_text {
-        lines.push(text.to_string());
-    }
-
-    lines.push(String::new());
-    lines.join("\n")
-}
-
-fn suggest_file_name(method: &str, url: &str) -> Option<String> {
-    let parsed = Url::parse(url).ok()?;
-    let host = parsed.host_str()?.replace('.', "-");
-    let segments: Vec<String> = parsed
-        .path_segments()
-        .map(|segments| {
-            segments
-                .filter(|segment| !segment.is_empty())
-                .map(|segment| segment.replace(|c: char| !c.is_ascii_alphanumeric(), "-"))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let path_part = if segments.is_empty() {
-        "root".to_string()
-    } else {
-        segments.join("-")
-    };
-
-    let base = format!("{}-{}-{}", method.to_lowercase(), host, path_part)
-        .replace("--", "-")
-        .trim_matches('-')
-        .to_string();
-
-    Some(format!(
-        "{}.curl",
-        if base.is_empty() { "request" } else { &base }
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;
     use once_cell::sync::Lazy;
+    use std::collections::HashMap;
 
     fn options(command: &str) -> ImportOptions<'_> {
         static TEMPLATE: Lazy<HashMap<String, String>> = Lazy::new(|| {
@@ -452,25 +279,9 @@ mod tests {
     }
 
     #[test]
-    fn import_via_curl_parser_emits_warnings_and_substitutions() -> Result<()> {
-        let command = "curl --insecure https://api.example.com/widgets -H 'Authorization: Bearer secret-token'";
-        let result = super::import_via_curl_parser(&options(command))?;
-
-        assert!(result
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("--insecure")));
-        assert!(result.contents.contains("GET {API_BASE}/widgets"));
-        assert!(result
-            .contents
-            .contains("authorization: Bearer {API_TOKEN}"));
-        Ok(())
-    }
-
-    #[test]
     fn import_via_manual_handles_data_files_and_basic_auth() -> Result<()> {
         let command = "curl --request PATCH https://api.example.com/items -H 'X-Test: value' --data '@/tmp/input.json' --data '@/tmp/other.json' --user user:pass";
-        let result = super::import_via_manual(&options(command))?;
+        let result = import_via_manual(&options(command))?;
 
         assert_eq!(result.method, "PATCH");
         assert!(result
@@ -481,22 +292,5 @@ mod tests {
         assert!(result.contents.contains("Authorization: Basic user:pass"));
         assert!(result.contents.contains("X-Test: value"));
         Ok(())
-    }
-
-    #[test]
-    fn substitutions_favor_longer_matches_first() {
-        let mut template = HashMap::new();
-        template.insert("LONG".to_string(), "abcdef".to_string());
-        template.insert("SHORT".to_string(), "abc".to_string());
-        let substitutions = super::build_substitutions(&template, &HashMap::new());
-
-        let replaced = super::apply_substitutions("abcdef", &substitutions);
-        assert_eq!(replaced, "{LONG}");
-    }
-
-    #[test]
-    fn suggest_file_name_produces_sanitized_output() {
-        let name = super::suggest_file_name("POST", "https://api.example.com/a/b?c=d").unwrap();
-        assert_eq!(name, "post-api-example-com-a-b.curl");
     }
 }

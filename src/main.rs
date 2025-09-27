@@ -10,7 +10,7 @@ use curlpit::interactive::run_interactive;
 #[command(
     name = "curlpit",
     version,
-    about = "File-first HTTP runner rewritten in Rust",
+    about = "File-first HTTP runner",
     disable_help_subcommand = true
 )]
 struct Cli {
@@ -168,6 +168,57 @@ fn resolve_relative(base: &Path, path: &Path) -> PathBuf {
         path.to_path_buf()
     } else {
         base.join(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use tempfile::tempdir;
+
+    struct DirGuard {
+        original: PathBuf,
+    }
+
+    impl DirGuard {
+        fn new(new_dir: &Path) -> Result<Self> {
+            let original = std::env::current_dir()?;
+            std::env::set_current_dir(new_dir)?;
+            Ok(Self { original })
+        }
+    }
+
+    impl Drop for DirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    #[test]
+    fn resolve_path_uses_current_directory() -> Result<()> {
+        let temp = tempdir()?;
+        let _guard = DirGuard::new(temp.path())?;
+        let relative = Path::new("requests/test.curl");
+        std::fs::create_dir_all(temp.path().join("requests"))?;
+        std::fs::write(temp.path().join(relative), "GET https://example.com")?;
+        let resolved = resolve_path(relative)?;
+        assert!(resolved.is_absolute());
+        assert_eq!(
+            resolved.canonicalize()?,
+            temp.path().join(relative).canonicalize()?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_relative_joins_when_needed() {
+        let base = Path::new("/tmp/base");
+        let relative = Path::new("sub/request.curl");
+        assert_eq!(resolve_relative(base, relative), base.join(relative));
+
+        let absolute = Path::new("/var/data/request.curl");
+        assert_eq!(resolve_relative(base, absolute), absolute);
     }
 }
 

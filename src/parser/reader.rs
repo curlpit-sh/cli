@@ -10,6 +10,8 @@ use tokio::fs;
 use crate::config::EnvironmentContext;
 use crate::env::{expand_placeholders, load_env_directive};
 
+use super::model::{ParsedRequest, RequestBody, RequestDefinition};
+
 static HTTP_METHODS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     [
         "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE",
@@ -17,29 +19,6 @@ static HTTP_METHODS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     .into_iter()
     .collect()
 });
-
-#[derive(Debug, Clone)]
-pub enum RequestBody {
-    Text(String),
-    Bytes(Vec<u8>),
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestDefinition {
-    pub method: String,
-    pub url: String,
-    pub headers: Vec<(String, String)>,
-    pub body: Option<RequestBody>,
-    pub body_bytes: Option<usize>,
-    pub body_text: Option<String>,
-    pub body_file: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedRequest {
-    pub request: RequestDefinition,
-    pub env_files: Vec<PathBuf>,
-}
 
 pub async fn parse_request_file(
     path: &Path,
@@ -130,7 +109,6 @@ async fn parse_request_contents(
         }
     }
 
-    // Consume blank lines between headers and body
     while let Some((_, raw_line)) = lines.peek() {
         if raw_line.trim().is_empty() {
             lines.next();
@@ -187,27 +165,6 @@ async fn parse_request_contents(
         },
         env_files,
     })
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestTemplate {
-    pub method: String,
-    pub url: String,
-    pub headers: Vec<(String, String)>,
-    pub body_text: Option<String>,
-    pub body_file: Option<PathBuf>,
-}
-
-impl From<&RequestDefinition> for RequestTemplate {
-    fn from(value: &RequestDefinition) -> Self {
-        Self {
-            method: value.method.clone(),
-            url: value.url.clone(),
-            headers: value.headers.clone(),
-            body_text: value.body_text.clone(),
-            body_file: value.body_file.clone(),
-        }
-    }
 }
 
 #[cfg(test)]

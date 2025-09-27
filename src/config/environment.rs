@@ -1,97 +1,14 @@
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
-use serde::Deserialize;
-use serde_json::Value;
+use anyhow::{bail, Result};
 
 use crate::env::{load_env_file_sync, EnvMap};
 
-fn resolve_relative(base: &Path, value: &str) -> PathBuf {
-    let candidate = Path::new(value);
-    if candidate.is_absolute() {
-        candidate.to_path_buf()
-    } else {
-        base.join(candidate)
-    }
-}
+use super::{CurlpitConfig, CurlpitProfileConfig, LoadedConfig};
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
-pub struct CurlpitProfileConfig {
-    pub env: Option<String>,
-    pub variables: HashMap<String, String>,
-    pub vars: HashMap<String, String>,
-    #[serde(rename = "responseOutputDir")]
-    pub response_output_dir: Option<String>,
-    #[serde(flatten)]
-    pub extras: HashMap<String, Value>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
-pub struct CurlpitConfig {
-    pub profiles: HashMap<String, CurlpitProfileConfig>,
-    pub variables: HashMap<String, String>,
-    pub vars: HashMap<String, String>,
-    #[serde(rename = "defaultProfile")]
-    pub default_profile: Option<String>,
-    #[serde(rename = "responseOutputDir")]
-    pub response_output_dir: Option<String>,
-    #[serde(flatten)]
-    pub extras: HashMap<String, Value>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct LoadedConfig {
-    pub config: CurlpitConfig,
-    pub path: PathBuf,
-    pub dir: PathBuf,
-}
-
-pub fn load_config(target: &Path) -> Result<Option<LoadedConfig>> {
-    let resolved = if target.is_absolute() {
-        target.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(target)
-    };
-
-    let (file_path, dir) = if resolved.is_dir() {
-        (resolved.join("curlpit.json"), resolved)
-    } else {
-        (
-            resolved.clone(),
-            resolved
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| std::env::current_dir().unwrap()),
-        )
-    };
-
-    if !file_path.exists() {
-        return Ok(None);
-    }
-
-    let contents = fs::read_to_string(&file_path)
-        .with_context(|| format!("reading config {}", file_path.display()))?;
-
-    let config: CurlpitConfig = serde_json::from_str(&contents)
-        .with_context(|| format!("parsing config {}", file_path.display()))?;
-
-    Ok(Some(LoadedConfig {
-        config,
-        path: file_path,
-        dir,
-    }))
-}
-
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EnvironmentContext {
     pub base_dir: PathBuf,
@@ -174,7 +91,6 @@ impl EnvironmentBuilder {
             }
         }
 
-        // explicit env might come without config present
         if self.config.is_none() {
             if let Some(explicit) = &self.explicit_env {
                 let loaded = load_env_file_sync(explicit, &mut initial_env)?;
@@ -243,9 +159,19 @@ fn resolve_profile<'a>(
     bail!("No profile candidates available");
 }
 
+fn resolve_relative(base: &Path, value: &str) -> PathBuf {
+    let candidate = Path::new(value);
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        base.join(candidate)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::load_config;
     use anyhow::Result;
     use tempfile::tempdir;
 
