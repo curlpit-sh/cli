@@ -1,0 +1,6 @@
+npm/node_modules/
+npm/npm-debug.log
+npm/package-lock.json
+npm/pnpm-lock.yaml
+npm/yarn.lock
+npm/vendor/curlpit*

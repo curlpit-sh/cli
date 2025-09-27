@@ -1,0 +1,13 @@
+{
+  "$schema": "../schema.json",
+  "defaultProfile": "httpbin",
+  "responseOutputDir": "responses",
+  "profiles": {
+    "httpbin": {
+      "env": "./example.env",
+      "variables": {
+        "API_BASE": "https://httpbin.org"
+      }
+    }
+  }
+}

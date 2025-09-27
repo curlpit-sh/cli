@@ -1,0 +1,7 @@
+[alias]
+example = "run -- --config examples examples/httpbin-get.curl"
+interactive = "run -- --config examples"
+build-mac-arm64 = "build --release --target aarch64-apple-darwin"
+build-mac-x64 = "build --release --target x86_64-apple-darwin"
+build-linux-arm64 = "build --release --target aarch64-unknown-linux-gnu"
+build-linux-x64 = "build --release --target x86_64-unknown-linux-gnu"
