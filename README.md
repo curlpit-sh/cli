@@ -45,7 +45,7 @@ Use `curlpit --help` for the full list of options.
 
 ## Releases
 
-GitHub releases provide binaries for macOS (arm64, x64), Linux (x64), and Windows (x64). Checksums accompany each asset for verification. npm and Deno installers consume the same artifacts via install-time downloads.
+GitHub releases provide binaries for macOS (arm64, x64), Linux (arm64, x64), and Windows (x64). Checksums accompany each asset for verification. npm and Deno installers consume the same artifacts via install-time downloads. Ensure `tar` on your system supports `.tar.xz` archives (default on modern macOS/Linux/Windows).
 
 ### Releasing
 

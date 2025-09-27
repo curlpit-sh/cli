@@ -2,14 +2,12 @@ use std::{
     fmt, fs,
     io::{self, Write},
     path::{Path, PathBuf},
-    sync::mpsc::{channel, Receiver, TryRecvError},
     time::{Duration, SystemTime},
 };
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use inquire::{validator::Validation, Confirm, Select, Text};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
 use crate::{
@@ -33,21 +31,7 @@ pub async fn run_interactive(options: InteractiveOptions) -> Result<()> {
     let mut profile = options.requested_profile.clone();
     let mut files = discover_curl_files(&options.base_dir)?;
 
-    let (file_watcher, file_events) = match setup_file_watcher(&options.base_dir) {
-        Ok(pair) => pair,
-        Err(error) => {
-            eprintln!("Failed to watch for .curl changes: {error}");
-            (None, None)
-        }
-    };
-
     loop {
-        if let Some(rx) = file_events.as_ref() {
-            if drain_file_events(rx) {
-                files = discover_curl_files(&options.base_dir)?;
-            }
-        }
-
         if files.is_empty() {
             println!("No .curl files found under {}", options.base_dir.display());
             return Ok(());
@@ -135,7 +119,6 @@ pub async fn run_interactive(options: InteractiveOptions) -> Result<()> {
         }
     }
 
-    drop(file_watcher);
     Ok(())
 }
 
@@ -409,48 +392,4 @@ fn normalize_command(input: &str) -> String {
         }
     }
     normalized.trim().to_string()
-}
-
-fn setup_file_watcher(
-    base_dir: &Path,
-) -> Result<(Option<RecommendedWatcher>, Option<Receiver<()>>)> {
-    let (tx, rx) = channel();
-    let base = base_dir.to_path_buf();
-    let mut watcher = match notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-        if let Ok(event) = res {
-            let relevant = event.paths.is_empty()
-                || event
-                    .paths
-                    .iter()
-                    .any(|path| path.extension().map(|ext| ext == "curl").unwrap_or(false));
-            if relevant
-                && matches!(
-                    event.kind,
-                    EventKind::Create(_)
-                        | EventKind::Modify(_)
-                        | EventKind::Remove(_)
-                        | EventKind::Any
-                )
-            {
-                let _ = tx.send(());
-            }
-        }
-    }) {
-        Ok(watcher) => watcher,
-        Err(error) => return Err(error.into()),
-    };
-    watcher.watch(base.as_path(), RecursiveMode::Recursive)?;
-    Ok((Some(watcher), Some(rx)))
-}
-
-fn drain_file_events(rx: &Receiver<()>) -> bool {
-    let mut triggered = false;
-    loop {
-        match rx.try_recv() {
-            Ok(_) => triggered = true,
-            Err(TryRecvError::Empty) => break,
-            Err(TryRecvError::Disconnected) => break,
-        }
-    }
-    triggered
 }

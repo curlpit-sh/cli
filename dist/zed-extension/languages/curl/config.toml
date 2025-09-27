@@ -1,5 +1,5 @@
 name = "Curl"
-grammar = "curl"
+grammar = "http"
 path_suffixes = ["curl"]
 line_comments = ["# "]
 autoclose_before = "]})"

@@ -6,9 +6,8 @@ schema_version = 1
 authors = ["Curlpit Contributors"]
 repository = "https://github.com/curlpit/curlpit"
 
-[grammars.curl]
-repository = "https://github.com/rest-nvim/tree-sitter-http"
-commit = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"
+languages = ["languages/curl"]
 
-[languages.curl]
-path = "languages/curl"
+[grammars.http]
+repository = "https://github.com/rest-nvim/tree-sitter-http"
+rev = "db8b4398de90b6d0b6c780aba96aaa2cd8e9202c"

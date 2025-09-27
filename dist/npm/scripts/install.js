@@ -10,6 +10,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
+const { spawn } = require('node:child_process');
 const tar = require('tar');
 const AdmZip = require('adm-zip');
 
@@ -19,17 +20,21 @@ const VENDOR_DIR = path.join(PACKAGE_ROOT, 'vendor');
 const TARGETS = {
   darwin: {
     arm64: {
-      artifact: 'curlpit-aarch64-apple-darwin.tar.gz',
+      artifact: 'curlpit-aarch64-apple-darwin.tar.xz',
       binaryName: 'curlpit',
     },
     x64: {
-      artifact: 'curlpit-x86_64-apple-darwin.tar.gz',
+      artifact: 'curlpit-x86_64-apple-darwin.tar.xz',
       binaryName: 'curlpit',
     },
   },
   linux: {
     x64: {
-      artifact: 'curlpit-x86_64-unknown-linux-gnu.tar.gz',
+      artifact: 'curlpit-x86_64-unknown-linux-gnu.tar.xz',
+      binaryName: 'curlpit',
+    },
+    arm64: {
+      artifact: 'curlpit-aarch64-unknown-linux-gnu.tar.xz',
       binaryName: 'curlpit',
     },
   },
@@ -162,6 +167,8 @@ async function computeSha256(filePath) {
 async function extractArchive(archivePath, tempDir) {
   if (archivePath.endsWith('.tar.gz')) {
     await tar.x({ file: archivePath, cwd: tempDir });
+  } else if (archivePath.endsWith('.tar.xz')) {
+    await extractTarXZ(archivePath, tempDir);
   } else if (archivePath.endsWith('.zip')) {
     const zip = new AdmZip(archivePath);
     zip.extractAllTo(tempDir, true);
@@ -185,6 +192,20 @@ async function extractArchive(archivePath, tempDir) {
   }
 
   throw new Error('Extracted archive did not contain a curlpit binary.');
+}
+
+async function extractTarXZ(archivePath, tempDir) {
+  const tarPath = process.env.TAR_PATH || 'tar';
+  await new Promise((resolve, reject) => {
+    const child = spawn(tarPath, ['-xJf', archivePath, '-C', tempDir], {
+      stdio: 'inherit',
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`tar exited with code ${code}`));
+    });
+  });
 }
 
 async function cleanupTemp(dir) {

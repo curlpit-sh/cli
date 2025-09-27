@@ -209,3 +209,119 @@ impl From<&RequestDefinition> for RequestTemplate {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::EnvironmentContext;
+    use crate::env::EnvMap;
+    use anyhow::Result;
+    use tempfile::tempdir;
+
+    fn base_environment(base: &Path) -> EnvironmentContext {
+        EnvironmentContext {
+            base_dir: base.to_path_buf(),
+            config_dir: base.to_path_buf(),
+            template_variables: EnvMap::new(),
+            initial_env: EnvMap::new(),
+            env_files: Vec::new(),
+            profile_name: None,
+            response_output_dir: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_request_file_resolves_body_directive() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+
+        let mut env_context = base_environment(base);
+        env_context
+            .initial_env
+            .insert("PAYLOAD".to_string(), "payload.bin".to_string());
+
+        let payload_path = base.join("payload.bin");
+        tokio::fs::write(&payload_path, b"\x00\x01\x02").await?;
+
+        let request_path = base.join("request.curl");
+        tokio::fs::write(&request_path, "POST https://example.com\n@body {PAYLOAD}\n").await?;
+
+        let parsed = parse_request_file(&request_path, &env_context).await?;
+
+        assert_eq!(parsed.request.method, "POST");
+        assert!(matches!(
+            parsed.request.body,
+            Some(RequestBody::Bytes(ref bytes)) if bytes == &[0, 1, 2]
+        ));
+        assert_eq!(parsed.request.body_file, Some(payload_path));
+        assert_eq!(parsed.request.body_bytes, Some(3));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parse_request_file_reports_missing_placeholders() {
+        let temp = tempdir().unwrap();
+        let base = temp.path();
+        let env_context = base_environment(base);
+
+        let request_path = base.join("missing.curl");
+        tokio::fs::write(&request_path, "GET {UNKNOWN}\n")
+            .await
+            .unwrap();
+
+        let err = parse_request_file(&request_path, &env_context)
+            .await
+            .expect_err("expected missing placeholder error");
+        assert!(err
+            .to_string()
+            .contains("Missing template variable: UNKNOWN"));
+    }
+
+    #[tokio::test]
+    async fn parse_request_file_validates_headers() {
+        let temp = tempdir().unwrap();
+        let base = temp.path();
+        let env_context = base_environment(base);
+
+        let request_path = base.join("bad_header.curl");
+        tokio::fs::write(&request_path, "GET https://example.com\nInvalidHeader\n")
+            .await
+            .unwrap();
+
+        let err = parse_request_file(&request_path, &env_context)
+            .await
+            .expect_err("expected invalid header error");
+        assert!(err.to_string().contains("Invalid header line"));
+    }
+
+    #[tokio::test]
+    async fn parse_request_file_tracks_env_directives() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+
+        let env_context = base_environment(base);
+        let env_file = base.join("extra.env");
+        tokio::fs::write(&env_file, "PATH_SEGMENT=widgets\nTOKEN=abc123\n").await?;
+
+        let request_path = base.join("env.curl");
+        tokio::fs::write(
+            &request_path,
+            "@env extra.env\nGET https://example.com/{PATH_SEGMENT}\nauthorization: Bearer {TOKEN}\n",
+        )
+        .await?;
+
+        let parsed = parse_request_file(&request_path, &env_context).await?;
+
+        assert_eq!(parsed.env_files.len(), 1);
+        assert!(parsed.env_files[0].ends_with("extra.env"));
+        assert_eq!(parsed.request.url, "https://example.com/widgets");
+        assert_eq!(parsed.request.headers.len(), 1);
+        assert_eq!(
+            parsed.request.headers[0],
+            ("authorization".to_string(), "Bearer abc123".to_string())
+        );
+
+        Ok(())
+    }
+}

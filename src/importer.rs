@@ -423,3 +423,80 @@ fn suggest_file_name(method: &str, url: &str) -> Option<String> {
         if base.is_empty() { "request" } else { &base }
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use once_cell::sync::Lazy;
+
+    fn options(command: &str) -> ImportOptions<'_> {
+        static TEMPLATE: Lazy<HashMap<String, String>> = Lazy::new(|| {
+            let mut map = HashMap::new();
+            map.insert(
+                "API_BASE".to_string(),
+                "https://api.example.com".to_string(),
+            );
+            map
+        });
+        static ENV: Lazy<HashMap<String, String>> = Lazy::new(|| {
+            let mut map = HashMap::new();
+            map.insert("API_TOKEN".to_string(), "secret-token".to_string());
+            map
+        });
+        ImportOptions {
+            command,
+            template_variables: &TEMPLATE,
+            env_variables: &ENV,
+        }
+    }
+
+    #[test]
+    fn import_via_curl_parser_emits_warnings_and_substitutions() -> Result<()> {
+        let command = "curl --insecure https://api.example.com/widgets -H 'Authorization: Bearer secret-token'";
+        let result = super::import_via_curl_parser(&options(command))?;
+
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("--insecure")));
+        assert!(result.contents.contains("GET {API_BASE}/widgets"));
+        assert!(result
+            .contents
+            .contains("authorization: Bearer {API_TOKEN}"));
+        Ok(())
+    }
+
+    #[test]
+    fn import_via_manual_handles_data_files_and_basic_auth() -> Result<()> {
+        let command = "curl --request PATCH https://api.example.com/items -H 'X-Test: value' --data '@/tmp/input.json' --data '@/tmp/other.json' --user user:pass";
+        let result = super::import_via_manual(&options(command))?;
+
+        assert_eq!(result.method, "PATCH");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.contains("Multiple @file bodies")));
+        assert!(result.contents.contains("PATCH {API_BASE}/items"));
+        assert!(result.contents.contains("Authorization: Basic user:pass"));
+        assert!(result.contents.contains("X-Test: value"));
+        Ok(())
+    }
+
+    #[test]
+    fn substitutions_favor_longer_matches_first() {
+        let mut template = HashMap::new();
+        template.insert("LONG".to_string(), "abcdef".to_string());
+        template.insert("SHORT".to_string(), "abc".to_string());
+        let substitutions = super::build_substitutions(&template, &HashMap::new());
+
+        let replaced = super::apply_substitutions("abcdef", &substitutions);
+        assert_eq!(replaced, "{LONG}");
+    }
+
+    #[test]
+    fn suggest_file_name_produces_sanitized_output() {
+        let name = super::suggest_file_name("POST", "https://api.example.com/a/b?c=d").unwrap();
+        assert_eq!(name, "post-api-example-com-a-b.curl");
+    }
+}

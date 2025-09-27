@@ -6,6 +6,8 @@ Use the `install.ts` script to download the curlpit binary for the current platf
 deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/dist/deno/install.ts
 ```
 
+Requires a `tar` binary with `.tar.xz` support (present on modern macOS/Linux and Windows).
+
 Environment overrides:
 
 - `CURLPIT_VERSION` — tag to install (default: latest published version, update script before releasing).

@@ -8,4 +8,4 @@ This package installs the prebuilt curlpit CLI. For full documentation, visit th
 npm install --global curlpit
 ```
 
-The installer downloads the appropriate binary for your current platform from the matching GitHub release tag. Set `CURLPIT_SKIP_POSTINSTALL=1` to skip downloading or `CURLPIT_LOCAL_BINARY=/path/to/curlpit` to reuse a local build during development.
+The installer downloads the appropriate binary for your current platform (macOS arm64/x64, Linux arm64/x64, Windows x64) from the matching GitHub release. Set `CURLPIT_SKIP_POSTINSTALL=1` to skip downloading or `CURLPIT_LOCAL_BINARY=/path/to/curlpit` to reuse a local build during development. A `tar` binary with `.tar.xz` support must be available on the PATH for Unix platforms.

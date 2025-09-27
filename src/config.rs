@@ -242,3 +242,138 @@ fn resolve_profile<'a>(
 
     bail!("No profile candidates available");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use tempfile::tempdir;
+
+    fn write_file(path: &Path, contents: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    #[tokio::test]
+    async fn environment_builder_prefers_explicit_env_and_output() -> Result<()> {
+        let temp = tempdir()?;
+        let base_dir = temp.path().join("workspace");
+        let config_dir = temp.path().join("config");
+        std::fs::create_dir_all(&base_dir)?;
+        std::fs::create_dir_all(&config_dir)?;
+
+        write_file(
+            &config_dir.join("curlpit.json"),
+            r#"{
+  "variables": {"GLOBAL": "global"},
+  "vars": {"ALIAS": "alias"},
+  "profiles": {
+    "dev": {
+      "env": "dev.env",
+      "variables": {"PROFILE": "dev"},
+      "vars": {"PROFILE_ALIAS": "dev-alias"},
+      "responseOutputDir": "profile-responses"
+    },
+    "staging": {
+      "env": "staging.env",
+      "variables": {"PROFILE": "staging"},
+      "vars": {"PROFILE_ALIAS": "staging-alias"},
+      "responseOutputDir": "staging-responses"
+    }
+  },
+  "defaultProfile": "dev",
+  "responseOutputDir": "root-responses"
+}
+"#,
+        );
+
+        write_file(
+            &config_dir.join("staging.env"),
+            "TOKEN=from-staging\nEXTRA=profile\n",
+        );
+        write_file(
+            &config_dir.join("override.env"),
+            "TOKEN=override\nEXTRA=explicit\n",
+        );
+
+        let loaded = load_config(&config_dir)?.expect("config should be present");
+        let builder = EnvironmentBuilder::new(
+            base_dir.clone(),
+            config_dir.clone(),
+            Some(loaded.clone()),
+            Some("staging".to_string()),
+            Some(config_dir.join("override.env")),
+            Some(PathBuf::from("custom-out")),
+        );
+
+        let environment = builder.build().await?;
+
+        assert_eq!(environment.profile_name.as_deref(), Some("staging"));
+        assert_eq!(
+            environment.template_variables.get("GLOBAL"),
+            Some(&"global".to_string())
+        );
+        assert_eq!(
+            environment.template_variables.get("PROFILE"),
+            Some(&"staging".to_string())
+        );
+        assert_eq!(
+            environment.template_variables.get("PROFILE_ALIAS"),
+            Some(&"staging-alias".to_string())
+        );
+
+        assert_eq!(
+            environment.initial_env.get("TOKEN"),
+            Some(&"override".to_string())
+        );
+        assert_eq!(
+            environment.initial_env.get("EXTRA"),
+            Some(&"explicit".to_string())
+        );
+
+        assert_eq!(environment.env_files.len(), 1);
+        assert!(environment
+            .env_files
+            .first()
+            .unwrap()
+            .ends_with(Path::new("override.env")));
+
+        let expected_output = base_dir.join("custom-out");
+        assert_eq!(
+            environment.response_output_dir.as_ref(),
+            Some(&expected_output)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn environment_builder_without_config_still_loads_explicit_env() -> Result<()> {
+        let temp = tempdir()?;
+        let base_dir = temp.path().join("workspace");
+        std::fs::create_dir_all(&base_dir)?;
+        let env_path = base_dir.join("local.env");
+        write_file(&env_path, "FOO=bar\n");
+
+        let builder = EnvironmentBuilder::new(
+            base_dir.clone(),
+            base_dir.clone(),
+            None,
+            None,
+            Some(env_path.clone()),
+            Some(PathBuf::from("responses")),
+        );
+
+        let environment = builder.build().await?;
+
+        assert_eq!(environment.template_variables.len(), 0);
+        assert_eq!(environment.initial_env.get("FOO"), Some(&"bar".to_string()));
+        assert_eq!(environment.env_files, vec![env_path]);
+        assert_eq!(
+            environment.response_output_dir,
+            Some(base_dir.join("responses"))
+        );
+
+        Ok(())
+    }
+}

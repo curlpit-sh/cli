@@ -12,11 +12,12 @@ import { join } from "https://deno.land/std@0.224.0/path/mod.ts";
 
 const TARGETS: Record<string, Record<string, { artifact: string; binaryName: string }>> = {
   darwin: {
-    aarch64: { artifact: "curlpit-aarch64-apple-darwin.tar.gz", binaryName: "curlpit" },
-    x86_64: { artifact: "curlpit-x86_64-apple-darwin.tar.gz", binaryName: "curlpit" },
+    aarch64: { artifact: "curlpit-aarch64-apple-darwin.tar.xz", binaryName: "curlpit" },
+    x86_64: { artifact: "curlpit-x86_64-apple-darwin.tar.xz", binaryName: "curlpit" },
   },
   linux: {
-    x86_64: { artifact: "curlpit-x86_64-unknown-linux-gnu.tar.gz", binaryName: "curlpit" },
+    x86_64: { artifact: "curlpit-x86_64-unknown-linux-gnu.tar.xz", binaryName: "curlpit" },
+    aarch64: { artifact: "curlpit-aarch64-unknown-linux-gnu.tar.xz", binaryName: "curlpit" },
   },
   windows: {
     x86_64: { artifact: "curlpit-x86_64-pc-windows-msvc.zip", binaryName: "curlpit.exe" },
@@ -121,13 +122,9 @@ async function verifyChecksum(filePath: string, checksumUrl: string) {
 
 async function extractArchive(archivePath: string, temp: string, isWindows: boolean): Promise<string> {
   if (archivePath.endsWith(".tar.gz")) {
-    const cmd = new Deno.Command("tar", {
-      args: ["-xzf", archivePath, "-C", temp],
-    });
-    const { success, stderr } = await cmd.output();
-    if (!success) {
-      throw new Error(new TextDecoder().decode(stderr));
-    }
+    await runTar(["-xzf", archivePath, "-C", temp]);
+  } else if (archivePath.endsWith(".tar.xz")) {
+    await runTar(["-xJf", archivePath, "-C", temp]);
   } else if (archivePath.endsWith(".zip")) {
     if (isWindows) {
       const cmd = new Deno.Command("powershell", {
@@ -167,4 +164,13 @@ async function ensureDir(dir: string) {
 function bufferToHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function runTar(args: string[]) {
+  const tarPath = Deno.env.get("TAR_PATH") ?? "tar";
+  const cmd = new Deno.Command(tarPath, { args });
+  const { success, stderr } = await cmd.output();
+  if (!success) {
+    throw new Error(new TextDecoder().decode(stderr));
+  }
 }

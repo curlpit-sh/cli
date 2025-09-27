@@ -116,3 +116,80 @@ pub fn load_env_directive(
     env_files.push(loaded);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use tempfile::tempdir;
+
+    struct EnvVarGuard {
+        key: String,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self {
+                key: key.to_string(),
+                original,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(ref value) = self.original {
+                std::env::set_var(&self.key, value);
+            } else {
+                std::env::remove_var(&self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn expand_placeholders_uses_environment_fallback() {
+        let _guard = EnvVarGuard::set("FROM_OS", "value");
+        let env = EnvMap::new();
+        let rendered = expand_placeholders("token={FROM_OS}", &env).unwrap();
+        assert_eq!(rendered, "token=value");
+    }
+
+    #[test]
+    fn expand_placeholders_rejects_invalid_keys() {
+        let env = EnvMap::new();
+        let err = expand_placeholders("{BAD!}", &env).unwrap_err();
+        assert!(err.to_string().contains("Invalid template variable"));
+    }
+
+    #[test]
+    fn expand_placeholders_reports_missing_values() {
+        let env = EnvMap::new();
+        let err = expand_placeholders("{MISSING}", &env).unwrap_err();
+        assert!(err.to_string().contains("Missing template variable"));
+    }
+
+    #[test]
+    fn load_env_file_sync_merges_values() -> Result<()> {
+        let temp = tempdir()?;
+        let env_path = temp.path().join("vars.env");
+        fs::write(&env_path, "FOO=bar\nBAZ=qux\n")?;
+
+        let mut env_map = EnvMap::new();
+        load_env_file_sync(&env_path, &mut env_map)?;
+
+        assert_eq!(env_map.get("FOO"), Some(&"bar".to_string()));
+        assert_eq!(env_map.get("BAZ"), Some(&"qux".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn load_env_file_sync_propagates_io_errors() {
+        let mut env_map = EnvMap::new();
+        let path = PathBuf::from("does-not-exist.env");
+        let err = load_env_file_sync(&path, &mut env_map).unwrap_err();
+        assert!(err.to_string().contains("reading env file"));
+    }
+}

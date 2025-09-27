@@ -300,3 +300,134 @@ fn next_index(dir: &Path) -> Result<u32> {
     }
     Ok(max_index)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use regex::Regex;
+    use tempfile::tempdir;
+
+    #[test]
+    fn sanitize_component_replaces_invalid_characters() {
+        assert_eq!(sanitize_component("Hello World!"), "Hello-World");
+        assert_eq!(sanitize_component("***"), "request");
+        assert_eq!(sanitize_component("foo_bar"), "foo_bar");
+    }
+
+    #[test]
+    fn extension_for_content_type_matches_common_types() {
+        assert_eq!(
+            extension_for_content_type(Some("application/json; charset=utf-8")),
+            ".json"
+        );
+        assert_eq!(extension_for_content_type(Some("text/html")), ".html");
+        assert_eq!(
+            extension_for_content_type(Some("application/unknown")),
+            ".bin"
+        );
+        assert_eq!(extension_for_content_type(None), ".bin");
+    }
+
+    #[test]
+    fn create_preview_handles_binary_data() {
+        let text = create_preview("hello".as_bytes(), 10);
+        assert_eq!(text, "hello");
+
+        let binary = create_preview(&[0, 159, 146, 150], 4);
+        assert_eq!(binary, "009f9296");
+    }
+
+    #[test]
+    fn collect_headers_preserves_values() {
+        let mut map = HeaderMap::new();
+        map.insert("X-Test", "value".parse().unwrap());
+        map.insert("content-type", "application/json".parse().unwrap());
+
+        let headers = collect_headers(&map);
+        assert!(headers
+            .iter()
+            .any(|(name, value)| name == "x-test" && value == "value"));
+        assert!(headers
+            .iter()
+            .any(|(name, value)| name == "content-type" && value == "application/json"));
+    }
+
+    #[test]
+    fn format_body_link_wraps_file_urls() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("result.json");
+        std::fs::write(&path, "{}").unwrap();
+
+        let link = format_body_link(&path);
+        assert!(link.contains("result.json"));
+        assert!(link.contains("\u{1b}]8;;"));
+    }
+
+    #[test]
+    fn next_index_detects_existing_files() -> Result<()> {
+        let temp = tempdir()?;
+        std::fs::create_dir_all(temp.path())?;
+        std::fs::write(temp.path().join("000-first.bin"), b"one")?;
+        std::fs::write(temp.path().join("010-second.bin"), b"two")?;
+
+        let idx = next_index(temp.path())?;
+        assert_eq!(idx, 11);
+        Ok(())
+    }
+
+    #[test]
+    fn write_response_body_creates_files_under_response_dir() -> Result<()> {
+        let temp = tempdir()?;
+        let response_dir = temp.path().join("responses");
+        let request_dir = temp.path().join("requests");
+        std::fs::create_dir_all(&request_dir)?;
+        let request_file = request_dir.join("Sample Request!.curl");
+        std::fs::write(&request_file, "")?;
+
+        let first = write_response_body(
+            b"{}",
+            Some("application/json"),
+            Some(response_dir.as_path()),
+            &request_file,
+        )?;
+        let second = write_response_body(
+            b"{}",
+            Some("application/json"),
+            Some(response_dir.as_path()),
+            &request_file,
+        )?;
+
+        let request_subdir = response_dir.join("Sample-Request");
+        assert_eq!(first.parent().unwrap(), request_subdir);
+        assert!(first
+            .extension()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with("json"));
+        assert!(second.parent().unwrap().exists());
+
+        let filename_pattern = Regex::new(r"^\d{3}-[a-z]+-[a-z]+\.json$").unwrap();
+        assert!(filename_pattern.is_match(first.file_name().unwrap().to_str().unwrap()));
+        assert!(filename_pattern.is_match(second.file_name().unwrap().to_str().unwrap()));
+        assert_eq!(&second.file_name().unwrap().to_str().unwrap()[0..3], "001");
+
+        let first_contents = std::fs::read(first)?;
+        assert_eq!(first_contents, b"{}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn write_response_body_defaults_to_temp_dir() -> Result<()> {
+        let temp = tempdir()?;
+        let request_file = temp.path().join("req.curl");
+        std::fs::write(&request_file, "")?;
+
+        let path = write_response_body(b"abc", None, None, &request_file)?;
+        assert!(path.exists());
+        assert!(path.extension().unwrap().to_string_lossy().ends_with("bin"));
+        assert_eq!(std::fs::read(path)?, b"abc");
+        Ok(())
+    }
+}
