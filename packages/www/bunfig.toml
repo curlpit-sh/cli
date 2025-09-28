@@ -1,0 +1,12 @@
+# Bun configuration for the curlpit landing page
+
+[[plugins]]
+name = "bun-plugin-tailwind"
+path = "bun-plugin-tailwind"
+
+[serve.static]
+plugins = ["bun-plugin-tailwind"]
+
+# Enable hot module reloading
+[serve]
+port = 3000

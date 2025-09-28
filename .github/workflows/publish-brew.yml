@@ -1,0 +1,21 @@
+name: Publish Brew Formula
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-brew:
+    runs-on: ubuntu-22.04
+    if: ${{ github.event.release.prerelease == false }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+          submodules: recursive
+      - name: Publish Brew formula (TODO)
+        run: echo "Brew publish steps go here"

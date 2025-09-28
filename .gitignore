@@ -1,0 +1,6 @@
+target/
+examples/responses
+
+coverage.lcov
+
+.DS_Store

@@ -1,0 +1,5 @@
+# Simple GET request against httpbin with templated base URL
+GET {API_BASE}/get
+User-Agent: curlpit-example/1.0
+Accept: application/json
+Authorization: Bearer {API_TOKEN}

@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Curlpit Configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to the curlpit configuration schema"
+    },
+    "defaultProfile": {
+      "type": "string",
+      "description": "Profile name to use when no --profile flag is provided"
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/definitions/profile"
+      }
+    },
+    "variables": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "responseOutputDir": {
+      "type": "string",
+      "description": "Directory where response bodies should be stored by default"
+    },
+    "env": {
+      "type": "string",
+      "description": "Relative path to an env file applied to all profiles"
+    },
+    "defaultHeaders": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "import": {
+      "$ref": "#/definitions/importConfig"
+    }
+  },
+  "required": [
+    "profiles"
+  ],
+  "additionalProperties": true,
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "env": {
+          "type": "string",
+          "description": "Relative path to an env file for this profile"
+        },
+        "variables": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "extends": {
+          "type": "string",
+          "description": "Optional profile inheritance key"
+        },
+        "responseOutputDir": {
+          "type": "string",
+          "description": "Directory where responses for this profile are stored"
+        },
+        "defaultHeaders": {
+          "$ref": "#/definitions/stringMap"
+        }
+      },
+      "additionalProperties": true
+    },
+    "importConfig": {
+      "type": "object",
+      "properties": {
+        "includeHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excludeHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "appendHeaders": {
+          "$ref": "#/definitions/stringMap"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

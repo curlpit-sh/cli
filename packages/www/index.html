@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>curlpit - Terminal-first HTTP runner</title>
+    <link rel="stylesheet" href="tailwindcss" />
+    <link rel="stylesheet" href="./app.css" />
+    <script src="./app.ts" type="module"></script>
+    <style>
+        :root {
+            --terminal-bg: #0a0a0a;
+            --terminal-surface: #141414;
+            --terminal-border: #262626;
+            --terminal-text: #e5e5e5;
+            --terminal-dim: #737373;
+            --terminal-accent: #10b981;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            background: var(--terminal-bg);
+            color: var(--terminal-text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            border-bottom: 1px solid var(--terminal-border);
+            background: rgba(20, 20, 20, 0.5);
+            backdrop-filter: blur(8px);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo-text {
+            color: var(--terminal-accent);
+            font-size: 1.25rem;
+            font-weight: bold;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-version {
+            color: var(--terminal-dim);
+            font-size: 0.75rem;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        nav a {
+            color: var(--terminal-dim);
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--terminal-text);
+        }
+
+        .install-btn {
+            background: var(--terminal-accent);
+            color: var(--terminal-bg);
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .install-btn:hover {
+            background: #0ea972;
+            transform: scale(1.05);
+        }
+
+        main {
+            flex: 1;
+            padding: 1rem;
+            overflow: hidden;
+        }
+
+        .playground {
+            max-width: 1400px;
+            margin: 0 auto;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .left-panes {
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .pane {
+            background: var(--terminal-surface);
+            border: 1px solid var(--terminal-border);
+            border-radius: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .pane-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--terminal-border);
+        }
+
+        .window-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .window-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+
+        .window-dot.red {
+            background: #ef4444;
+        }
+
+        .window-dot.yellow {
+            background: #eab308;
+        }
+
+        .window-dot.green {
+            background: #22c55e;
+        }
+
+        .pane-title {
+            color: var(--terminal-dim);
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
+
+        .example-select,
+        .btn-secondary {
+            background: var(--terminal-bg);
+            border: 1px solid var(--terminal-border);
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            color: var(--terminal-text);
+            cursor: pointer;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+
+        .example-select:hover,
+        .btn-secondary:hover {
+            border-color: var(--terminal-dim);
+        }
+
+        .example-select:focus {
+            outline: none;
+            border-color: var(--terminal-accent);
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            overflow: auto;
+        }
+
+        .tab-bar {
+            display: flex;
+            background: rgba(10, 10, 10, 0.5);
+            border-bottom: 1px solid var(--terminal-border);
+        }
+
+        .tab {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: var(--terminal-dim);
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            position: relative;
+        }
+
+        .tab:hover {
+            color: var(--terminal-text);
+        }
+
+        .tab.active {
+            color: var(--terminal-accent);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--terminal-accent);
+        }
+
+        .response-content {
+            flex: 1;
+            overflow: auto;
+            padding: 1rem;
+        }
+
+        .response-content pre {
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .run-btn {
+            background: var(--terminal-accent);
+            color: var(--terminal-bg);
+            border: none;
+            border-radius: 0.25rem;
+            padding: 0.375rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .run-btn:hover {
+            background: #0ea972;
+            transform: scale(1.05);
+        }
+
+        .run-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .playground {
+                grid-template-columns: 1fr;
+            }
+
+            .left-panes {
+                min-height: 400px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-text">curlpit</span>
+                <span class="logo-version">v1.0</span>
+            </div>
+            <nav>
+                <a href="https://github.com/curlpit-sh/cli" target="_blank">GitHub</a>
+                <a href="#install" class="install-btn">Install</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Playground -->
+    <main>
+        <div class="playground">
+            <!-- Left Panes -->
+            <div class="left-panes">
+                <!-- Request Editor -->
+                <div class="pane glow">
+                    <div class="pane-header">
+                        <div class="window-controls">
+                            <div class="window-dot red"></div>
+                            <div class="window-dot yellow"></div>
+                            <div class="window-dot green"></div>
+                            <span class="pane-title">request.curl</span>
+                        </div>
+                        <select id="example-selector" class="example-select">
+                            <option value="httpbin">HTTPBin with Variables</option>
+                            <option value="github">GitHub API</option>
+                            <option value="post">POST with Body</option>
+                            <option value="placeholder">JSONPlaceholder</option>
+                        </select>
+                    </div>
+                    <div class="editor-wrapper">
+                        <textarea id="curl-editor" class="editor" spellcheck="false"># GET request with templated variables
+GET {API_BASE}/get
+User-Agent: {USER_AGENT}
+Accept: application/json
+Authorization: Bearer {API_TOKEN}</textarea>
+                    </div>
+                </div>
+
+                <!-- Variables Editor -->
+                <div class="pane">
+                    <div class="pane-header">
+                        <div class="window-controls">
+                            <div class="window-dot red"></div>
+                            <div class="window-dot yellow"></div>
+                            <div class="window-dot green"></div>
+                            <span class="pane-title">variables.env</span>
+                        </div>
+                        <button id="clear-vars" class="btn-secondary">Clear</button>
+                    </div>
+                    <div class="editor-wrapper">
+                        <textarea id="variables-editor" class="editor" spellcheck="false"># Environment variables (these get interpolated)
+API_BASE=https://httpbin.org
+USER_AGENT=curlpit-playground/1.0
+API_TOKEN=demo-token-12345</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Response Pane -->
+            <div class="pane">
+                <div class="pane-header">
+                    <div class="window-controls">
+                        <div class="window-dot red"></div>
+                        <div class="window-dot yellow"></div>
+                        <div class="window-dot green"></div>
+                        <span class="pane-title">Response</span>
+                    </div>
+                    <button id="run-btn" class="run-btn">
+                        Run
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+                            </path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tab-bar">
+                    <button class="tab active" data-tab="output">Output</button>
+                    <button class="tab" data-tab="headers">Headers</button>
+                    <button class="tab" data-tab="raw">Raw</button>
+                </div>
+
+                <!-- Response Content -->
+                <div class="response-content">
+                    <pre
+                        id="response-output"><span style="color: var(--terminal-dim)">Press "Run" or Cmd/Ctrl+Enter to execute the request...</span></pre>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>

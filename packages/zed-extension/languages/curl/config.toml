@@ -1,0 +1,11 @@
+name = "Curl"
+grammar = "http"
+path_suffixes = ["curl"]
+line_comments = ["# "]
+autoclose_before = "]})"
+brackets = [
+    { start = "{", end = "}", close = true, newline = false },
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "[", end = "]", close = true, newline = false },
+]
+tab_size = 2

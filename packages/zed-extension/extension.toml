@@ -1,0 +1,9 @@
+id = "curlpit"
+name = "Curlpit"
+description = "Syntax highlighting for Curlpit .curl request files"
+version = "0.2.7"
+schema_version = 1
+authors = ["Curlpit Contributors"]
+repository = "https://github.com/curlpit/curlpit"
+
+languages = ["languages/curl"]

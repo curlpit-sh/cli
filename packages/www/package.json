@@ -1,0 +1,17 @@
+{
+  "name": "curlpit-www",
+  "version": "1.0.0",
+  "description": "Curlpit interactive landing page",
+  "scripts": {
+    "dev": "bun ./index.html --console",
+    "wasm": "wasm-pack build ./curlpit-wasm --target web",
+    "build": "bun build ./index.html --target bun --plugins --minify --outdir=dist"
+  },
+  "dependencies": {
+    "bun-plugin-tailwind": "^0.0.15",
+    "tailwindcss": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.10"
+  }
+}

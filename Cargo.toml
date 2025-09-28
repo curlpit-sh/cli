@@ -1,0 +1,61 @@
+[package]
+name = "curlpit"
+version = "0.2.7"
+edition = "2021"
+repository = "https://github.com/curlpit-sh/cli"
+
+[features]
+default = ["cli"]
+cli = [
+    "dep:clap",
+    "dep:serde_json",
+    "dep:dotenvy",
+    "dep:reqwest",
+    "dep:tokio",
+    "dep:walkdir",
+    "dep:chrono",
+    "dep:colored",
+    "dep:inquire",
+    "dep:futures-util",
+    "dep:indicatif",
+    "dep:url",
+    "dep:uuid",
+    "dep:hex",
+    "dep:petname",
+    "dep:shell-words",
+    "dep:curl-parser"
+]
+web = []
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+regex = "1"
+once_cell = "1.19"
+thiserror = "1.0"
+clap = { version = "4.5", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+dotenvy = { version = "0.15", optional = true }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "native-tls", "gzip", "brotli"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"], optional = true }
+walkdir = { version = "2", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+colored = { version = "2", optional = true }
+inquire = { version = "0.6", optional = true }
+futures-util = { version = "0.3", optional = true }
+indicatif = { version = "0.17", optional = true }
+url = { version = "2", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
+hex = { version = "0.4", optional = true }
+petname = { version = "1.1", optional = true }
+shell-words = { version = "1.1", optional = true }
+curl-parser = { version = "0.6", default-features = false, optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[profile.dist]
+inherits = "release"
+lto = "thin"

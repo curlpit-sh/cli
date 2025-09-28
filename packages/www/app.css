@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/* Shared terminal UI styling for the playground */
+body {
+    font-feature-settings: "liga" off;
+}
+
+textarea.editor {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    color: var(--terminal-text);
+    border: none;
+    resize: none;
+    padding: 1rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    caret-color: var(--terminal-accent);
+}
+
+textarea.editor:focus {
+    outline: none;
+}
+
+textarea.editor::selection {
+    background: rgba(16, 185, 129, 0.2);
+}
+
+.pane.glow {
+    position: relative;
+}
+
+.pane.glow::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 60px rgba(16, 185, 129, 0.1);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.pane.glow:focus-within::after,
+.pane.glow:hover::after {
+    opacity: 1;
+}
+
+.btn-secondary {
+    background: var(--terminal-bg);
+    color: var(--terminal-text);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+        border-color 0.2s ease,
+        color 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-secondary:hover {
+    border-color: var(--terminal-dim);
+}
+
+.copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--terminal-text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.copy-btn.copied {
+    color: var(--terminal-accent);
+}
+
+.dim {
+    color: var(--terminal-dim);
+}
+
+.variable-highlight,
+.syntax-method {
+    color: var(--terminal-accent);
+    font-weight: 600;
+}
+
+.syntax-header-key,
+.header-key {
+    color: #38bdf8;
+}
+
+.syntax-header-value,
+.header-value {
+    color: #fbbf24;
+}
+
+.syntax-variable {
+    color: #e879f9;
+}
+
+.syntax-url {
+    color: #60a5fa;
+    word-break: break-all;
+}
+
+.arrow {
+    color: var(--terminal-dim);
+    margin: 0;
+}
+
+.status-success {
+    color: #34d399;
+    font-weight: 600;
+}
+
+.status-error {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.interpolation-info {
+    margin: 0.5rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-left: 1rem;
+}
+
+.interpolation-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.response-content {
+    scrollbar-width: thin;
+}
+
+.response-content::-webkit-scrollbar,
+.editor-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.response-content::-webkit-scrollbar-thumb,
+.editor-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+}
+
+.response-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

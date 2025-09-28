@@ -1,0 +1,19 @@
+{
+  "$schema": "../schema.json",
+  "defaultProfile": "httpbin",
+  "responseOutputDir": "responses",
+  "defaultHeaders": {
+    "Something": "Something"
+  },
+  "import": {
+    "includeHeaders": []
+  },
+  "profiles": {
+    "httpbin": {
+      "env": "./example.env",
+      "variables": {
+        "API_BASE": "https://httpbin.org"
+      }
+    }
+  }
+}
