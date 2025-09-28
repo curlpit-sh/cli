@@ -5,9 +5,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Local};
-use inquire::{Confirm, Select, Text};
+use inquire::{Confirm, InquireError, Select, Text};
 use walkdir::WalkDir;
 
 use crate::{
@@ -27,13 +27,24 @@ pub struct InteractiveOptions {
     pub explicit_output_dir: Option<PathBuf>,
 }
 
-pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
+pub async fn run_interactive(options: InteractiveOptions) -> Result<()> {
+    let mut ui = InquireUi;
+    run_interactive_with_ui(options, &mut ui).await
+}
+
+pub(crate) async fn run_interactive_with_ui(
+    mut options: InteractiveOptions,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
     let mut profile = options.requested_profile.clone();
     let mut files = discover_curl_files(&options.base_dir)?;
 
     loop {
         if files.is_empty() {
-            println!("No .curl files found under {}", options.base_dir.display());
+            ui.print(&format!(
+                "No .curl files found under {}",
+                options.base_dir.display()
+            ));
             return Ok(());
         }
 
@@ -48,9 +59,12 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
         menu_items.push(MenuItem::Import);
         menu_items.push(MenuItem::Quit);
 
-        let choice = Select::new("curlpit", menu_items)
-            .with_page_size(10)
-            .prompt()?;
+        let labels: Vec<String> = menu_items.iter().map(|item| item.to_string()).collect();
+        let index = ui.select("curlpit", &labels, 0)?;
+        let choice = menu_items
+            .get(index)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("invalid menu selection"))?;
 
         match choice {
             MenuItem::Run(file) => {
@@ -63,11 +77,12 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
                     options.explicit_output_dir.clone(),
                 );
                 let env = builder.build().await?;
-                println!(
-                    "\nRunning {} (profile: {})\n",
+                ui.print("");
+                ui.print(&format!(
+                    "Running {} (profile: {})\n",
                     file.relative.display(),
                     env.profile_name.as_deref().unwrap_or("<none>")
-                );
+                ));
 
                 match execute_request_file(
                     &file.absolute,
@@ -83,11 +98,11 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
                         print_execution_result(&result);
                     }
                     Err(err) => {
-                        eprintln!("Error: {err:?}");
+                        ui.print(&format!("Error: {err:?}"));
                     }
                 }
 
-                let _ = Text::new("Press Enter to continue").prompt();
+                let _ = ui.input("Press Enter to continue", Some(""));
             }
             MenuItem::Refresh => {
                 files = discover_curl_files(&options.base_dir)?;
@@ -107,14 +122,14 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
             }
             MenuItem::ChangeProfile => {
                 if let Some(cfg) = &options.config {
-                    profile = Some(prompt_profile(cfg, profile.as_deref())?);
+                    profile = Some(prompt_profile(ui, cfg, profile.as_deref())?);
                 } else {
-                    println!("No configuration to select profiles from");
+                    ui.print("No configuration to select profiles from");
                 }
             }
             MenuItem::Import => {
-                if let Err(error) = handle_import(&options, &mut profile).await {
-                    eprintln!("Import failed: {error}");
+                if let Err(error) = handle_import(&options, &mut profile, ui).await {
+                    ui.print(&format!("Import failed: {error}"));
                 } else {
                     files = discover_curl_files(&options.base_dir)?;
                 }
@@ -167,6 +182,56 @@ impl fmt::Display for MenuItem {
     }
 }
 
+pub(crate) trait InteractiveUi {
+    fn print(&mut self, message: &str);
+    fn select(&mut self, prompt: &str, items: &[String], start: usize) -> Result<usize>;
+    fn input(&mut self, prompt: &str, default: Option<&str>) -> Result<Option<String>>;
+    fn confirm(&mut self, prompt: &str, default: bool) -> Result<bool>;
+    fn read_multiline(&mut self, prompt: &str) -> Result<Option<String>>;
+}
+
+struct InquireUi;
+
+impl InteractiveUi for InquireUi {
+    fn print(&mut self, message: &str) {
+        println!("{}", message);
+    }
+
+    fn select(&mut self, prompt: &str, items: &[String], start: usize) -> Result<usize> {
+        let choice = Select::new(prompt, items.to_vec())
+            .with_page_size(10)
+            .with_starting_cursor(start)
+            .prompt()?;
+        items
+            .iter()
+            .position(|item| item == &choice)
+            .ok_or_else(|| anyhow!("selection not found"))
+    }
+
+    fn input(&mut self, prompt: &str, default: Option<&str>) -> Result<Option<String>> {
+        let mut builder = Text::new(prompt);
+        if let Some(value) = default {
+            builder = builder.with_default(value);
+        }
+        match builder.prompt() {
+            Ok(value) => Ok(Some(value)),
+            Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+            Err(other) => Err(other.into()),
+        }
+    }
+
+    fn confirm(&mut self, prompt: &str, default: bool) -> Result<bool> {
+        match Confirm::new(prompt).with_default(default).prompt() {
+            Ok(value) => Ok(value),
+            Err(other) => Err(other.into()),
+        }
+    }
+
+    fn read_multiline(&mut self, prompt: &str) -> Result<Option<String>> {
+        read_multiline_from_stdin(prompt)
+    }
+}
+
 fn discover_curl_files(base_dir: &Path) -> Result<Vec<CurlFile>> {
     let mut files = Vec::new();
     for entry in WalkDir::new(base_dir).into_iter().filter_map(|e| e.ok()) {
@@ -192,7 +257,11 @@ fn discover_curl_files(base_dir: &Path) -> Result<Vec<CurlFile>> {
     Ok(files)
 }
 
-fn prompt_profile(config: &LoadedConfig, current: Option<&str>) -> Result<String> {
+fn prompt_profile(
+    ui: &mut dyn InteractiveUi,
+    config: &LoadedConfig,
+    current: Option<&str>,
+) -> Result<String> {
     let mut profiles: Vec<String> = config.config.profiles.keys().cloned().collect();
     profiles.sort();
 
@@ -206,25 +275,29 @@ fn prompt_profile(config: &LoadedConfig, current: Option<&str>) -> Result<String
         .position(|name| name == &default_profile)
         .unwrap_or(0);
 
-    let selection = Select::new("Select profile", profiles)
-        .with_starting_cursor(start)
-        .prompt()?;
-
-    Ok(selection)
+    let index = ui.select("Select profile", &profiles, start)?;
+    profiles
+        .get(index)
+        .cloned()
+        .ok_or_else(|| anyhow!("invalid profile selection"))
 }
 
-async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String>) -> Result<()> {
-    println!("Paste a curl command. Finish with an empty line (or press Ctrl+C to cancel).");
-    let command = match read_multiline_command()? {
+async fn handle_import(
+    options: &InteractiveOptions,
+    profile: &mut Option<String>,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    ui.print("Paste a curl command. Finish with an empty line (or press Ctrl+C to cancel).");
+    let command = match ui.read_multiline("curl>")? {
         Some(value) => value,
         None => {
-            println!("Import cancelled.");
+            ui.print("Import cancelled.");
             return Ok(());
         }
     };
 
     if command.trim().is_empty() {
-        println!("Import cancelled (empty command).");
+        ui.print("Import cancelled (empty command).");
         return Ok(());
     }
 
@@ -235,37 +308,33 @@ async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String
     } = prepared;
 
     if !import.warnings.is_empty() {
-        println!("Warnings:");
+        ui.print("Warnings:");
         for warning in &import.warnings {
-            println!(" - {}", warning);
+            ui.print(&format!(" - {}", warning));
         }
     }
 
-    let save_as = match Text::new("Save as").with_default(&default_name).prompt() {
-        Ok(value) => value.trim().to_string(),
-        Err(_) => {
-            println!("Import cancelled.");
+    let save_as = match ui.input("Save as", Some(&default_name))? {
+        Some(value) => value.trim().to_string(),
+        None => {
+            ui.print("Import cancelled.");
             return Ok(());
         }
     };
 
     if save_as.is_empty() {
-        println!("Import cancelled (empty file name).");
+        ui.print("Import cancelled (empty file name).");
         return Ok(());
     }
 
     let save_path = resolve_save_path(&options.base_dir, &save_as, &default_name);
 
     let allow_overwrite = if save_path.exists() {
-        let overwrite = Confirm::new("File exists. Overwrite?")
-            .with_default(false)
-            .prompt();
-        match overwrite {
-            Ok(true) => true,
-            _ => {
-                println!("Import cancelled.");
-                return Ok(());
-            }
+        if ui.confirm("File exists. Overwrite?", false)? {
+            true
+        } else {
+            ui.print("Import cancelled.");
+            return Ok(());
         }
     } else {
         true
@@ -277,7 +346,7 @@ async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String
         &import.contents,
         allow_overwrite,
     )?;
-    println!("Imported request written to {}", display);
+    ui.print(&format!("Imported request written to {}", display));
 
     Ok(())
 }
@@ -412,12 +481,12 @@ fn format_relative(time: SystemTime) -> String {
     datetime.format("%Y-%m-%d %H:%M").to_string()
 }
 
-fn read_multiline_command() -> Result<Option<String>> {
+fn read_multiline_from_stdin(prompt: &str) -> Result<Option<String>> {
     let stdin = io::stdin();
     let mut lines = Vec::new();
 
     loop {
-        print!("curl> ");
+        print!("{} ", prompt);
         io::stdout().flush()?;
 
         let mut buffer = String::new();
@@ -465,6 +534,7 @@ mod tests {
     use super::*;
     use crate::config::load_config;
     use anyhow::Result;
+    use std::collections::VecDeque;
     use tempfile::tempdir;
 
     #[test]
@@ -605,6 +675,175 @@ mod tests {
         let display = write_imported_file(&target, base, "new", true)?;
         assert_eq!(display, "existing.curl");
         assert_eq!(std::fs::read_to_string(&target)?, "new");
+        Ok(())
+    }
+
+    #[test]
+    fn prompt_profile_uses_default_selection() -> Result<()> {
+        use crate::config::{CurlpitConfig, CurlpitProfileConfig};
+
+        let mut profiles = std::collections::HashMap::new();
+        profiles.insert("alpha".to_string(), CurlpitProfileConfig::default());
+        profiles.insert("beta".to_string(), CurlpitProfileConfig::default());
+
+        let config = LoadedConfig {
+            config: CurlpitConfig {
+                profiles: profiles.clone(),
+                default_profile: Some("beta".to_string()),
+                ..CurlpitConfig::default()
+            },
+            path: PathBuf::new(),
+            dir: PathBuf::new(),
+        };
+
+        let mut ui = TestUi::new(vec![1]);
+        let selected = prompt_profile(&mut ui, &config, Some("gamma"))?;
+        assert_eq!(selected, "beta");
+        Ok(())
+    }
+
+    struct TestUi {
+        menu: VecDeque<usize>,
+        inputs: VecDeque<Option<String>>,
+        confirms: VecDeque<bool>,
+        multiline: VecDeque<Option<String>>,
+        prints: Vec<String>,
+        selects: usize,
+    }
+
+    impl TestUi {
+        fn new(menu: Vec<usize>) -> Self {
+            Self {
+                menu: menu.into(),
+                inputs: VecDeque::new(),
+                confirms: VecDeque::new(),
+                multiline: VecDeque::new(),
+                prints: Vec::new(),
+                selects: 0,
+            }
+        }
+
+        fn with_input(mut self, value: Option<&str>) -> Self {
+            self.inputs.push_back(value.map(|s| s.to_string()));
+            self
+        }
+
+        fn with_confirm(mut self, value: bool) -> Self {
+            self.confirms.push_back(value);
+            self
+        }
+
+        fn with_multiline(mut self, value: Option<&str>) -> Self {
+            self.multiline.push_back(value.map(|s| s.to_string()));
+            self
+        }
+    }
+
+    impl InteractiveUi for TestUi {
+        fn print(&mut self, message: &str) {
+            self.prints.push(message.to_string());
+        }
+
+        fn select(&mut self, _prompt: &str, items: &[String], _start: usize) -> Result<usize> {
+            self.selects += 1;
+            self.menu
+                .pop_front()
+                .map(|idx| {
+                    if idx >= items.len() {
+                        panic!("index {} out of bounds", idx);
+                    }
+                    idx
+                })
+                .ok_or_else(|| anyhow::anyhow!("unexpected menu request"))
+        }
+
+        fn input(&mut self, _prompt: &str, _default: Option<&str>) -> Result<Option<String>> {
+            Ok(self.inputs.pop_front().unwrap_or(Some(String::new())))
+        }
+
+        fn confirm(&mut self, _prompt: &str, _default: bool) -> Result<bool> {
+            Ok(self.confirms.pop_front().unwrap_or(true))
+        }
+
+        fn read_multiline(&mut self, _prompt: &str) -> Result<Option<String>> {
+            Ok(self.multiline.pop_front().unwrap_or(Some(String::new())))
+        }
+    }
+
+    #[tokio::test]
+    async fn run_interactive_with_ui_handles_empty_directory() -> Result<()> {
+        let temp = tempdir()?;
+        let options = InteractiveOptions {
+            base_dir: temp.path().to_path_buf(),
+            config_target: temp.path().to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![]);
+        run_interactive_with_ui(options, &mut ui).await?;
+        assert!(ui.prints.iter().any(|line| line.contains("No .curl files")));
+        assert_eq!(ui.selects, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_interactive_with_ui_quits_via_menu() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        std::fs::write(base.join("sample.curl"), "GET https://example.com\n")?;
+
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![3]);
+        run_interactive_with_ui(options, &mut ui).await?;
+        assert_eq!(ui.selects, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn handle_import_uses_ui_for_multiline_and_save() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let command = "curl https://example.com --header 'Accept: */*'";
+
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![])
+            .with_multiline(Some(command))
+            .with_input(Some("saved"))
+            .with_confirm(true);
+
+        let mut profile = None;
+        handle_import(&options, &mut profile, &mut ui).await?;
+
+        let saved = base.join("saved.curl");
+        assert!(saved.exists());
+        let contents = std::fs::read_to_string(saved)?;
+        assert!(contents.contains("GET https://example.com"));
+        assert!(ui
+            .prints
+            .iter()
+            .any(|line| line.contains("Imported request written")));
         Ok(())
     }
 }
