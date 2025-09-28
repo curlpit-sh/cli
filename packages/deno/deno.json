@@ -1,10 +1,13 @@
 {
   "name": "@curlpit/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "exports": "./install.ts",
   "license": "MIT",
   "publish": {
-    "include": ["dist/index.js", "README.md"]
+    "include": [
+      "dist/index.js",
+      "README.md"
+    ]
   },
   "imports": {
     "@std/path": "jsr:@std/path@^1.1.2"

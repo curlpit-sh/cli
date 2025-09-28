@@ -1,7 +1,7 @@
 id = "curlpit"
 name = "Curlpit"
 description = "Syntax highlighting for Curlpit .curl request files"
-version = "0.3.0"
+version = "0.3.1"
 schema_version = 1
 authors = ["Curlpit Contributors"]
 repository = "https://github.com/curlpit/curlpit"

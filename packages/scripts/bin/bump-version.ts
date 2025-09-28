@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface Descriptor {
   path: string;
@@ -25,6 +26,10 @@ if (!/^\d+\.\d+\.\d+(-[A-Za-z0-9-.]+)?$/.test(newVersion)) {
   console.error(`invalid semver version: ${newVersion}`);
   process.exit(1);
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const repoRoot = resolve(__dirname, "../../..");
 
 const files: Descriptor[] = [
   {
@@ -146,7 +151,7 @@ const files: Descriptor[] = [
 ];
 
 async function updateFile(descriptor: Descriptor) {
-  const fullPath = resolve(descriptor.path);
+  const fullPath = resolve(repoRoot, descriptor.path);
   let content = await readFile(fullPath, "utf8");
   const original = content;
 
