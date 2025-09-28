@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { join, resolve as resolvePath } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cleanup,
   createEnvReader,
   createTempDir,
-  determineBinaryName,
   installLocalBinary,
   downloadArtifact,
   ensureExecutable,
@@ -16,11 +16,9 @@ import {
 } from "@curlpit/scripts";
 import packageJson from "../package.json" with { type: "json" };
 
-const PACKAGE_ROOT = resolvePath(__dirname, "..");
-const VENDOR_DIR = join(PACKAGE_ROOT, "vendor");
-
 async function main() {
   const env = createEnvReader();
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
 
   if (env("CURLPIT_SKIP_POSTINSTALL")) {
     return;
@@ -29,20 +27,6 @@ async function main() {
   const platform = env("CURLPIT_PLATFORM") ?? process.platform;
   const arch = env("CURLPIT_ARCH") ?? process.arch;
 
-  const localBinary = env("CURLPIT_LOCAL_BINARY");
-  if (localBinary) {
-    const binaryName =
-      determineBinaryName(platform, arch) ??
-      (platform === "win32" ? "curlpit.exe" : "curlpit");
-    await installLocalBinary(
-      localBinary,
-      VENDOR_DIR,
-      binaryName,
-      platform !== "win32",
-    );
-    return;
-  }
-
   const repo = env("CURLPIT_REPOSITORY") ?? "curlpit-sh/cli";
   const version = env("CURLPIT_VERSION") ?? packageJson.version;
   const baseUrl = env("CURLPIT_DOWNLOAD_BASE") ?? "https://github.com";
@@ -50,6 +34,21 @@ async function main() {
   const tarPath = env("TAR_PATH");
 
   const plan = planRelease({ platform, arch, version, baseUrl, repo });
+  const binDir = env("CURLPIT_BIN_DIR") ?? moduleDir;
+  const binaryName = plan.target.binaryName;
+  const binaryDestination = join(binDir, binaryName);
+
+  const localBinary = env("CURLPIT_LOCAL_BINARY");
+  if (localBinary) {
+    await installLocalBinary(
+      localBinary,
+      binDir,
+      binaryName,
+      plan.platform !== "win32",
+    );
+    console.log(`curlpit binary installed to ${binaryDestination}`);
+    return;
+  }
 
   const tempDir = await createTempDir("curlpit-npm-");
   const archivePath = join(tempDir, plan.target.artifact);
@@ -79,14 +78,13 @@ async function main() {
       tarPath: tarPath ?? undefined,
     });
 
-    const destination = join(VENDOR_DIR, plan.target.binaryName);
     await ensureExecutable({
       sourcePath: extractedBinary,
-      destinationPath: destination,
+      destinationPath: binaryDestination,
       makeExecutable: plan.platform !== "win32",
     });
 
-    console.log(`curlpit binary installed to ${destination}`);
+    console.log(`curlpit binary installed to ${binaryDestination}`);
   } catch (error) {
     console.error(
       "Failed to install curlpit binary:",

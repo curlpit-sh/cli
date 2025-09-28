@@ -2,18 +2,17 @@
 // @ts-ignore Deno
 /// <reference lib="deno.ns" />
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cleanup,
   createEnvReader,
   createTempDir,
-  defaultBinDir,
   downloadArtifact,
   ensureDir,
   ensureExecutable,
   extractArchive,
   fetchChecksumText,
-  guessHomeDir,
   planRelease,
   verifyChecksum,
 } from "@curlpit/scripts";
@@ -29,8 +28,8 @@ const silent = Boolean(env("CURLPIT_SILENT"));
 const tarPath = env("TAR_PATH");
 
 const plan = planRelease({ platform, arch, version, baseUrl, repo });
-const home = guessHomeDir(env);
-const binDir = env("CURLPIT_BIN_DIR") ?? defaultBinDir(plan.platform, home);
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const binDir = env("CURLPIT_BIN_DIR") ?? moduleDir;
 const binaryPath = join(binDir, plan.target.binaryName);
 
 const tempDir = await createTempDir("curlpit-deno-");

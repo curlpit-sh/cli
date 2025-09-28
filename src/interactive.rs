@@ -18,6 +18,13 @@ use crate::{
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
+#[cfg(not(test))]
+const RELEASE_URL: &str = "https://github.com/curlpit-sh/cli/releases/latest";
+
+#[cfg(not(test))]
+use reqwest::header::{ACCEPT, USER_AGENT};
+#[cfg(not(test))]
+use serde::Deserialize;
 
 #[derive(Clone)]
 pub struct InteractiveOptions {
@@ -43,6 +50,14 @@ pub(crate) async fn run_interactive_with_ui(
     let mut files = discover_curl_files(&options.base_dir)?;
 
     ui.print(&format!("curlpit v{} (built {})", VERSION, BUILD_TIMESTAMP));
+
+    if maybe_offer_project_creation(&mut options, &mut profile, ui)? {
+        files = discover_curl_files(&options.base_dir)?;
+    }
+
+    if let Err(err) = maybe_check_for_updates(&options, ui).await {
+        ui.print(&format!("Update check failed: {err}"));
+    }
 
     loop {
         if files.is_empty() {
@@ -354,6 +369,164 @@ async fn handle_import(
     ui.print(&format!("Imported request written to {}", display));
 
     Ok(())
+}
+
+fn maybe_offer_project_creation(
+    options: &mut InteractiveOptions,
+    profile: &mut Option<String>,
+    ui: &mut dyn InteractiveUi,
+) -> Result<bool> {
+    if options.config.is_some() {
+        return Ok(false);
+    }
+
+    let project_dir = options.base_dir.join(".curlpit");
+    if project_dir.exists() {
+        return Ok(false);
+    }
+
+    if ui.confirm("No curlpit project found. Create one here?", true)? {
+        create_project_scaffold(&options.base_dir)?;
+        ui.print("Created .curlpit project with sample request");
+        options.config = load_config(&options.config_target)?;
+        if profile.is_none() {
+            if let Some(cfg) = options.config.as_ref() {
+                *profile = cfg.config.default_profile.clone();
+            }
+        }
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+fn create_project_scaffold(base_dir: &Path) -> Result<()> {
+    let project_dir = base_dir.join(".curlpit");
+    let requests_dir = project_dir.join("requests");
+    fs::create_dir_all(&requests_dir)?;
+
+    let config_path = project_dir.join("curlpit.json");
+    if !config_path.exists() {
+        let config_contents = r#"{
+  "$schema": "https://raw.githubusercontent.com/curlpit-sh/cli/refs/heads/main/schema.json",
+  "defaultProfile": "local",
+  "checkForUpdates": true,
+  "variables": {},
+  "profiles": {
+    "local": {
+      "variables": {
+        "API_BASE": "https://httpbin.org",
+        "API_TOKEN": "demo-token"
+      }
+    }
+  },
+  "responseOutputDir": "responses"
+}
+"#;
+        fs::write(&config_path, config_contents)?;
+    }
+
+    let sample_request = requests_dir.join("demo.curl");
+    if !sample_request.exists() {
+        let request_contents =
+            "GET {API_BASE}/get\nauthorization: Bearer {API_TOKEN}\naccept: application/json\n\n";
+        fs::write(&sample_request, request_contents)?;
+    }
+
+    let gitignore = project_dir.join(".gitignore");
+    if !gitignore.exists() {
+        fs::write(&gitignore, "requests/\n")?;
+    }
+
+    let env_path = project_dir.join(".env");
+    if !env_path.exists() {
+        let env_contents = "API_TOKEN=demo-token\n";
+        fs::write(&env_path, env_contents)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(test))]
+async fn maybe_check_for_updates(
+    options: &InteractiveOptions,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    if std::env::var("CURLPIT_NO_UPDATE_CHECK").is_ok() {
+        return Ok(());
+    }
+
+    let enabled = options
+        .config
+        .as_ref()
+        .and_then(|cfg| cfg.config.check_for_updates)
+        .unwrap_or(true);
+
+    if !enabled {
+        return Ok(());
+    }
+
+    let ReleaseResponse { tag_name, html_url } = fetch_latest_release().await?;
+    let current = normalize_version(VERSION);
+    let latest = normalize_version(&tag_name);
+
+    if latest != current {
+        let url = if html_url.is_empty() {
+            RELEASE_URL.to_string()
+        } else {
+            html_url
+        };
+        let link = terminal_link("Download now", &url);
+        ui.print(&format!(
+            "Update available: {} → {}  {}",
+            VERSION, latest, link
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+async fn maybe_check_for_updates(
+    _options: &InteractiveOptions,
+    _ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(not(test))]
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    tag_name: String,
+    html_url: String,
+}
+
+#[cfg(not(test))]
+async fn fetch_latest_release() -> Result<ReleaseResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.github.com/repos/curlpit-sh/cli/releases/latest")
+        .header(USER_AGENT, format!("curlpit/{VERSION}"))
+        .header(ACCEPT, "application/vnd.github+json")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("GitHub responded with status {}", resp.status());
+    }
+
+    let body = resp.json::<ReleaseResponse>().await?;
+    Ok(body)
+}
+
+#[cfg(not(test))]
+fn normalize_version(value: &str) -> &str {
+    value.trim_start_matches('v')
+}
+
+#[cfg(not(test))]
+fn terminal_link(text: &str, url: &str) -> String {
+    format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, text)
 }
 
 struct PreparedImport {
@@ -752,15 +925,14 @@ mod tests {
 
         fn select(&mut self, _prompt: &str, items: &[String], _start: usize) -> Result<usize> {
             self.selects += 1;
-            self.menu
+            let idx = self
+                .menu
                 .pop_front()
-                .map(|idx| {
-                    if idx >= items.len() {
-                        panic!("index {} out of bounds", idx);
-                    }
-                    idx
-                })
-                .ok_or_else(|| anyhow::anyhow!("unexpected menu request"))
+                .ok_or_else(|| anyhow::anyhow!("unexpected menu request"))?;
+            if idx >= items.len() {
+                panic!("index {} out of bounds", idx);
+            }
+            Ok(idx)
         }
 
         fn input(&mut self, _prompt: &str, _default: Option<&str>) -> Result<Option<String>> {
@@ -789,7 +961,7 @@ mod tests {
             explicit_output_dir: None,
         };
 
-        let mut ui = TestUi::new(vec![]);
+        let mut ui = TestUi::new(vec![]).with_confirm(false);
         run_interactive_with_ui(options, &mut ui).await?;
         assert!(ui.prints.iter().any(|line| line.contains("No .curl files")));
         assert_eq!(ui.selects, 0);
@@ -812,9 +984,39 @@ mod tests {
             explicit_output_dir: None,
         };
 
-        let mut ui = TestUi::new(vec![3]);
+        let mut ui = TestUi::new(vec![3]).with_confirm(false);
         run_interactive_with_ui(options, &mut ui).await?;
         assert_eq!(ui.selects, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_interactive_creates_project_when_confirmed() -> Result<()> {
+        let temp = tempdir()?;
+        let options = InteractiveOptions {
+            base_dir: temp.path().to_path_buf(),
+            config_target: temp.path().to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![4]).with_confirm(true);
+        run_interactive_with_ui(options, &mut ui).await?;
+
+        let project_dir = temp.path().join(".curlpit");
+        assert!(project_dir.exists());
+        assert!(project_dir.join("curlpit.json").exists());
+        assert!(project_dir.join("requests/demo.curl").exists());
+        let gitignore = project_dir.join(".gitignore");
+        assert!(gitignore.exists());
+        assert!(std::fs::read_to_string(gitignore)?.contains("requests/"));
+        assert!(ui
+            .prints
+            .iter()
+            .any(|line| line.contains("Created .curlpit project")));
         Ok(())
     }
 

@@ -2,6 +2,15 @@
 
 Terminal-first HTTP runner that executes scripted requests, prints structured output, and writes response bodies to disk.
 
+## Highlights
+
+- **File-first workflow** – store HTTP requests as `.curl` files (Curlpit syntax or imported curl commands) and version them alongside code.
+- **Live response capture** – pretty CLI output with colored status, headers, previews, and automatic response body archiving by request name.
+- **Profile-aware environments** – load `curlpit.json` plus `.env` files, merge variables across profiles, and reuse placeholders like `{API_BASE}`.
+- **Interactive mode** – browse `.curl` files, switch profiles, import curl commands, and now scaffold new projects with a demo request and config.
+- **Template exports** – transform requests into code snippets (e.g., JS fetch) with configurable templates.
+- **Robust importer** – convert complex curl invocations into Curlpit requests, handling header rules, placeholder substitution, and env variables.
+
 ## Installation
 
 ### Using npm (prebuilt binaries)

@@ -21,8 +21,7 @@
     ],
     "packageJson": {
       "dependencies": [
-        "npm:@types/deno@^2.3.0",
-        "npm:@types/node@^24.5.2"
+        "npm:@types/deno@^2.3.0"
       ]
     }
   }
