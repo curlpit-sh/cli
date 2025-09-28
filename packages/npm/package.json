@@ -1,6 +1,6 @@
 {
   "name": "curlpit",
-  "version": "0.2.7",
+  "version": "0.3.0",
   "description": "Terminal-first HTTP runner for replaying scripted requests.",
   "license": "MIT",
   "repository": {

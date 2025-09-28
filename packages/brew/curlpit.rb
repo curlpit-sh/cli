@@ -1,8 +1,8 @@
 class Curlpit < Formula
   desc "Terminal-first HTTP runner"
   homepage "https://github.com/curlpit-sh/cli"
-  version "0.2.7"
-  url "https://github.com/curlpit-sh/cli/archive/refs/tags/v0.2.7.tar.gz"
+  version "0.3.0"
+  url "https://github.com/curlpit-sh/cli/archive/refs/tags/v0.3.0.tar.gz"
   sha256 "REPLACE_WITH_TARBALL_SHA256"
   license "MIT"
 

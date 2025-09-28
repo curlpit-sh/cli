@@ -46,7 +46,7 @@ const env = Deno.env;
 const platform = env.get("CURLPIT_PLATFORM") ?? Deno.build.os;
 const arch = env.get("CURLPIT_ARCH") ?? Deno.build.arch;
 const repo = env.get("CURLPIT_REPOSITORY") ?? "curlpit-sh/cli";
-const version = env.get("CURLPIT_VERSION") ?? "v0.2.7";
+const version = env.get("CURLPIT_VERSION") ?? "v0.3.0";
 const baseUrl = env.get("CURLPIT_DOWNLOAD_BASE") ?? "https://github.com";
 
 const target = TARGETS[platform]?.[arch];
