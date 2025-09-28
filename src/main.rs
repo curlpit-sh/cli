@@ -220,6 +220,45 @@ mod tests {
         let absolute = Path::new("/var/data/request.curl");
         assert_eq!(resolve_relative(base, absolute), absolute);
     }
+
+    #[tokio::test]
+    async fn handle_export_writes_to_file() -> Result<()> {
+        let temp = tempdir()?;
+        let request_path = temp.path().join("sample.curl");
+        std::fs::write(&request_path, "GET https://example.com/api\n")?;
+
+        let output_path = temp.path().join("output.js");
+
+        exports::handle_export(
+            "js-fetch".to_string(),
+            request_path.clone(),
+            Some(output_path.clone()),
+            None,
+            None,
+            None,
+        )
+        .await?;
+
+        let exported = std::fs::read_to_string(output_path)?;
+        assert!(exported.contains("fetch(\"https://example.com/api\""));
+        assert!(exported.contains("method: \"GET\""));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn handle_export_prints_to_stdout_when_no_path() -> Result<()> {
+        let temp = tempdir()?;
+        let request_path = temp.path().join("sample.curl");
+        std::fs::write(
+            &request_path,
+            "POST https://example.com/items\n\n{\"ok\":true}\n",
+        )?;
+
+        exports::handle_export("js-fetch".to_string(), request_path, None, None, None, None)
+            .await?;
+
+        Ok(())
+    }
 }
 
 mod exports {

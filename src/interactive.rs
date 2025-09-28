@@ -5,7 +5,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use inquire::{Confirm, Select, Text};
 use walkdir::WalkDir;
@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 use crate::{
     config::{load_config, EnvironmentBuilder, LoadedConfig},
     executor::{execute_request_file, print_execution_result, ExecutionOptions},
-    importer::{import_curl_command, ImportOptions},
+    importer::{import_curl_command, ImportOptions, ImportResult},
 };
 
 #[derive(Clone)]
@@ -228,13 +228,77 @@ async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String
         return Ok(());
     }
 
-    let normalized = normalize_command(&command);
+    let prepared = prepare_import(options, profile.as_deref(), &command).await?;
+    let PreparedImport {
+        import,
+        default_name,
+    } = prepared;
+
+    if !import.warnings.is_empty() {
+        println!("Warnings:");
+        for warning in &import.warnings {
+            println!(" - {}", warning);
+        }
+    }
+
+    let save_as = match Text::new("Save as").with_default(&default_name).prompt() {
+        Ok(value) => value.trim().to_string(),
+        Err(_) => {
+            println!("Import cancelled.");
+            return Ok(());
+        }
+    };
+
+    if save_as.is_empty() {
+        println!("Import cancelled (empty file name).");
+        return Ok(());
+    }
+
+    let save_path = resolve_save_path(&options.base_dir, &save_as, &default_name);
+
+    let allow_overwrite = if save_path.exists() {
+        let overwrite = Confirm::new("File exists. Overwrite?")
+            .with_default(false)
+            .prompt();
+        match overwrite {
+            Ok(true) => true,
+            _ => {
+                println!("Import cancelled.");
+                return Ok(());
+            }
+        }
+    } else {
+        true
+    };
+
+    let display = write_imported_file(
+        &save_path,
+        &options.base_dir,
+        &import.contents,
+        allow_overwrite,
+    )?;
+    println!("Imported request written to {}", display);
+
+    Ok(())
+}
+
+struct PreparedImport {
+    import: ImportResult,
+    default_name: String,
+}
+
+async fn prepare_import(
+    options: &InteractiveOptions,
+    profile: Option<&str>,
+    command: &str,
+) -> Result<PreparedImport> {
+    let normalized = normalize_command(command);
 
     let builder = EnvironmentBuilder::new(
         options.base_dir.clone(),
         options.config_target.clone(),
         options.config.clone(),
-        profile.clone(),
+        profile.map(|s| s.to_string()),
         options.explicit_env.clone(),
         options.explicit_output_dir.clone(),
     );
@@ -267,59 +331,36 @@ async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String
         append_headers,
     })?;
 
-    if !import.warnings.is_empty() {
-        println!("Warnings:");
-        for warning in &import.warnings {
-            println!(" - {}", warning);
-        }
-    }
-
     let default_name = import
         .suggested_filename
+        .clone()
         .unwrap_or_else(|| "request.curl".to_string());
 
-    let save_as = match Text::new("Save as").with_default(&default_name).prompt() {
-        Ok(value) => value.trim().to_string(),
-        Err(_) => {
-            println!("Import cancelled.");
-            return Ok(());
-        }
-    };
+    Ok(PreparedImport {
+        import,
+        default_name,
+    })
+}
 
-    if save_as.is_empty() {
-        println!("Import cancelled (empty file name).");
-        return Ok(());
+fn write_imported_file(
+    path: &Path,
+    base_dir: &Path,
+    contents: &str,
+    allow_overwrite: bool,
+) -> Result<String> {
+    if path.exists() && !allow_overwrite {
+        bail!("Refusing to overwrite {}", path.display());
     }
-
-    let save_path = resolve_save_path(&options.base_dir, &save_as, &default_name);
-
-    if save_path.exists() {
-        let overwrite = Confirm::new("File exists. Overwrite?")
-            .with_default(false)
-            .prompt();
-        match overwrite {
-            Ok(true) => {}
-            _ => {
-                println!("Import cancelled.");
-                return Ok(());
-            }
-        }
-    }
-
-    if let Some(parent) = save_path.parent() {
+    if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&save_path, import.contents)?;
+    fs::write(path, contents)?;
 
-    println!(
-        "Imported request written to {}",
-        save_path
-            .strip_prefix(&options.base_dir)
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| save_path.display().to_string())
-    );
-
-    Ok(())
+    let display = path
+        .strip_prefix(base_dir)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string());
+    Ok(display)
 }
 
 fn resolve_save_path(base_dir: &Path, input: &str, default_name: &str) -> PathBuf {
@@ -422,6 +463,7 @@ fn normalize_command(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::load_config;
     use anyhow::Result;
     use tempfile::tempdir;
 
@@ -485,5 +527,84 @@ mod tests {
             normalized,
             "curl https://example.com    -H 'Accept: application/json'"
         );
+    }
+
+    #[tokio::test]
+    async fn prepare_import_resolves_environment_variables() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        std::fs::write(
+            base.join("curlpit.json"),
+            r#"{
+  "defaultProfile": "test",
+  "profiles": {
+    "test": {
+      "env": "example.env",
+      "variables": {
+        "API_BASE": "https://api.example.com"
+      }
+    }
+  },
+  "import": {
+    "includeHeaders": ["Authorization"]
+  }
+}
+"#,
+        )?;
+        std::fs::write(base.join("example.env"), "API_TOKEN=token-123\n")?;
+
+        let loaded = load_config(base)?.expect("config should load");
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: Some(loaded),
+            requested_profile: Some("test".to_string()),
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let command = "curl -X POST https://api.example.com/items -H 'Authorization: Bearer token-123' --data '{\"ok\":true}'";
+        let prepared =
+            prepare_import(&options, options.requested_profile.as_deref(), command).await?;
+
+        assert!(prepared.import.contents.contains("POST {API_BASE}/items"));
+        assert!(prepared
+            .import
+            .contents
+            .contains("authorization: Bearer {API_TOKEN}"));
+        assert_eq!(prepared.default_name, "post-api-example-com-items.curl");
+        Ok(())
+    }
+
+    #[test]
+    fn write_imported_file_creates_directories() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let target = base.join("requests").join("sample.curl");
+
+        let display = write_imported_file(&target, base, "GET https://example.com", true)?;
+
+        assert_eq!(display, "requests/sample.curl");
+        assert_eq!(std::fs::read_to_string(&target)?, "GET https://example.com");
+        Ok(())
+    }
+
+    #[test]
+    fn write_imported_file_respects_overwrite_flag() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let target = base.join("existing.curl");
+        std::fs::write(&target, "old")?;
+
+        let err =
+            write_imported_file(&target, base, "new", false).expect_err("should refuse overwrite");
+        assert!(err.to_string().contains("Refusing to overwrite"));
+
+        // Allow overwrite succeeds
+        let display = write_imported_file(&target, base, "new", true)?;
+        assert_eq!(display, "existing.curl");
+        assert_eq!(std::fs::read_to_string(&target)?, "new");
+        Ok(())
     }
 }

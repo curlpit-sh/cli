@@ -1,0 +1,17 @@
+{
+  "name": "@curlpit/workspace",
+  "version": "0.3.0",
+  "scripts": {
+    "bump": "bun scripts/bin/bump-version.ts"
+  },
+  "workspaces": {
+    "packages": [
+      "deno",
+      "scripts",
+      "npm"
+    ]
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.22"
+  }
+}

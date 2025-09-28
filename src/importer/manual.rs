@@ -328,4 +328,39 @@ mod tests {
         assert!(result.contents.contains("X-Trace: trace-id"));
         Ok(())
     }
+
+    #[test]
+    fn manual_import_handles_inline_json_and_user() -> Result<()> {
+        let command = r#"curl --json='{"ok":true}' -uuser:token -HAccept:*/* --url=https://api.example.com/data"#;
+        let result = import_via_manual(&options(command))?;
+
+        assert!(result.contents.contains("Content-Type: application/json"));
+        assert!(result.contents.contains("Authorization: Basic user:token"));
+        assert!(result.url.contains("{API_BASE}"));
+        assert_eq!(result.method, "POST");
+        Ok(())
+    }
+
+    #[test]
+    fn manual_import_supports_data_shortcuts() -> Result<()> {
+        let command = "curl https://api.example.com --data-urlencode=foo=bar --data-raw=test";
+        let result = import_via_manual(&options(command))?;
+
+        assert!(result.contents.contains("test"));
+        Ok(())
+    }
+
+    #[test]
+    fn manual_import_errors_when_missing_value() {
+        let err =
+            import_via_manual(&options("curl -H")).expect_err("missing value should produce error");
+        assert!(err.to_string().contains("missing value"));
+    }
+
+    #[test]
+    fn manual_import_requires_curl_prefix() {
+        let err = import_via_manual(&options("http https://example.com"))
+            .expect_err("non curl commands should be rejected");
+        assert!(err.to_string().contains("Command must start"));
+    }
 }

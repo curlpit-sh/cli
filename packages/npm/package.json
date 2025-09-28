@@ -3,30 +3,34 @@
   "version": "0.3.0",
   "description": "Terminal-first HTTP runner for replaying scripted requests.",
   "license": "MIT",
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/curlpit-sh/cli.git"
   },
   "bin": {
-    "curlpit": "bin/run.js",
-    "crlp": "bin/run.js"
+    "curlpit": "dist/run.js",
+    "crlp": "dist/run.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "build": "rm -rf dist && bun build ./src/install.ts ./src/run.ts --outdir dist --target node --format esm",
+    "postinstall": "node dist/install.js"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "bin",
-    "scripts",
+    "dist",
     "vendor",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
-    "adm-zip": "^0.5.12",
-    "tar": "^6.2.1"
+    "@curlpit/scripts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4"
   },
   "keywords": [
     "curl",

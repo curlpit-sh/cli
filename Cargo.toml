@@ -55,6 +55,7 @@ curl-parser = { version = "0.6", default-features = false, optional = true }
 pretty_assertions = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+httpmock = "0.7"
 
 [profile.dist]
 inherits = "release"
