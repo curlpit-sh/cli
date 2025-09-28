@@ -16,6 +16,9 @@ use crate::{
     importer::{import_curl_command, ImportOptions, ImportResult},
 };
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
+
 #[derive(Clone)]
 pub struct InteractiveOptions {
     pub base_dir: PathBuf,
@@ -38,6 +41,8 @@ pub(crate) async fn run_interactive_with_ui(
 ) -> Result<()> {
     let mut profile = options.requested_profile.clone();
     let mut files = discover_curl_files(&options.base_dir)?;
+
+    ui.print(&format!("curlpit v{} (built {})", VERSION, BUILD_TIMESTAMP));
 
     loop {
         if files.is_empty() {
@@ -394,6 +399,7 @@ async fn prepare_import(
     let import = import_curl_command(&ImportOptions {
         command: &normalized,
         template_variables: &environment.template_variables,
+        template_variants: &environment.template_variants,
         env_variables: &environment.initial_env,
         include_headers,
         exclude_headers,
@@ -816,30 +822,48 @@ mod tests {
     async fn handle_import_uses_ui_for_multiline_and_save() -> Result<()> {
         let temp = tempdir()?;
         let base = temp.path();
-        let command = "curl https://example.com --header 'Accept: */*'";
+        std::fs::write(
+            base.join("curlpit.json"),
+            r#"{
+  "defaultProfile": "local",
+  "variables": {},
+  "profiles": {
+    "local": {
+      "variables": { "API_BASE": "http://localhost:8877" }
+    },
+    "staging": {
+      "variables": { "API_BASE": "https://staging.api.vrplatform.app" }
+    }
+  }
+}
+"#,
+        )?;
 
+        let loaded = load_config(base)?.expect("config should load");
         let options = InteractiveOptions {
             base_dir: base.to_path_buf(),
             config_target: base.to_path_buf(),
-            config: None,
-            requested_profile: None,
+            config: Some(loaded),
+            requested_profile: Some("local".to_string()),
             explicit_env: None,
             preview_bytes: None,
             explicit_output_dir: None,
         };
+
+        let command = "curl 'https://staging.api.vrplatform.app/statements'";
 
         let mut ui = TestUi::new(vec![])
             .with_multiline(Some(command))
             .with_input(Some("saved"))
             .with_confirm(true);
 
-        let mut profile = None;
+        let mut profile = Some("local".to_string());
         handle_import(&options, &mut profile, &mut ui).await?;
 
         let saved = base.join("saved.curl");
         assert!(saved.exists());
         let contents = std::fs::read_to_string(saved)?;
-        assert!(contents.contains("GET https://example.com"));
+        assert!(contents.contains("GET {API_BASE}/statements"));
         assert!(ui
             .prints
             .iter()

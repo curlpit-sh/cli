@@ -29,7 +29,11 @@ pub(crate) fn import_via_manual(options: &ImportOptions<'_>) -> Result<ImportRes
         .clone()
         .ok_or_else(|| anyhow!("Unable to determine request URL"))?;
 
-    let substitutions = build_substitutions(options.template_variables, options.env_variables);
+    let substitutions = build_substitutions(
+        options.template_variables,
+        options.env_variables,
+        options.template_variants,
+    );
     let substituted_url = apply_substitutions(&url, &substitutions);
     let substituted_headers: Vec<(String, String)> = parsed
         .headers
@@ -282,6 +286,7 @@ mod tests {
         ImportOptions {
             command,
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: None,
             exclude_headers: None,
@@ -316,6 +321,7 @@ mod tests {
             command:
                 "curl https://api.example.com --header 'Accept: */*' --header 'X-Custom: keep'",
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: Some(&include),
             exclude_headers: Some(&exclude),

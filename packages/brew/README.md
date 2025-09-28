@@ -6,7 +6,7 @@ Quick publish steps:
 
 1. Compute tarball checksum:
    ```bash
-   shasum -a 256 curlpit-0.3.1.tar.gz
+   shasum -a 256 curlpit-0.0.0-dev.tar.gz
    ```
 2. Update `curlpit.rb` with version/tag/sha.
 3. Commit and push to your tap repository.

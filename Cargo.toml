@@ -60,6 +60,9 @@ assert_cmd = "2"
 assert_fs = "1"
 predicates = "3"
 
+[build-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
 [profile.dist]
 inherits = "release"
 lto = "thin"

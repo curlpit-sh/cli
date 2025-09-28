@@ -50,11 +50,6 @@ const files: Descriptor[] = [
         regex: /(name = "curlpit"\nversion = ")([^"]+)(")/m,
         replacer: (_match, pre, _version, post) => `${pre}${newVersion}${post}`,
       },
-      {
-        type: "text",
-        regex: /(name = "curlpit-wasm"\nversion = ")([^"]+)(")/m,
-        replacer: (_match, pre, _version, post) => `${pre}${newVersion}${post}`,
-      },
     ],
   },
   {

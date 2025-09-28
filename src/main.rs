@@ -6,10 +6,19 @@ use curlpit::config::{load_config, EnvironmentBuilder};
 use curlpit::executor::{execute_request_file, ExecutionOptions};
 use curlpit::interactive::run_interactive;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const LONG_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (built ",
+    env!("BUILD_TIMESTAMP"),
+    ")"
+);
+
 #[derive(Parser, Debug)]
 #[command(
     name = "curlpit",
-    version,
+    version = VERSION,
+    long_version = LONG_VERSION,
     about = "File-first HTTP runner",
     disable_help_subcommand = true
 )]

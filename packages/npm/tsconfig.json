@@ -4,7 +4,7 @@
     "module": "EsNext",
     "moduleResolution": "node",
     "strict": true,
-    "types": ["node"],
+    "types": ["@types/bun"],
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true
   },

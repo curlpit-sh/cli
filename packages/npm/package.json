@@ -1,6 +1,6 @@
 {
   "name": "curlpit",
-  "version": "0.3.1",
+  "version": "0.0.0-dev",
   "description": "Terminal-first HTTP runner for replaying scripted requests.",
   "license": "MIT",
   "type": "module",
@@ -25,12 +25,8 @@
     "README.md",
     "LICENSE"
   ],
-  "dependencies": {
-    "@curlpit/scripts": "workspace:*"
-  },
   "devDependencies": {
-    "@types/node": "^20.16.5",
-    "typescript": "^5.5.4"
+    "@curlpit/scripts": "workspace:*"
   },
   "keywords": [
     "curl",

@@ -32,6 +32,7 @@ mod tests {
         ImportOptions {
             command,
             template_variables: &EMPTY,
+            template_variants: &[],
             env_variables: &EMPTY,
             include_headers: None,
             exclude_headers: None,

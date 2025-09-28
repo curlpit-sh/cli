@@ -21,9 +21,9 @@ fn displays_help() {
 fn displays_version() {
     let mut cmd = cargo_bin();
     cmd.arg("--version");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")));
+    cmd.assert().success().stdout(
+        predicate::str::contains(env!("CARGO_PKG_VERSION")).and(predicate::str::contains("built")),
+    );
 }
 
 #[test]

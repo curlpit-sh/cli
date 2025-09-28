@@ -39,20 +39,55 @@ permissions:
 # If there's a prerelease-style suffix to the version, then the release(s)
 # will be marked as a prerelease.
 on:
-  pull_request:
   push:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
 
 jobs:
+  verify:
+    name: Verify tag and tests
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ensure tag commit is on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || (echo "Tag must point to a commit on main" && exit 1)
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint with clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Run tests
+        run: cargo test --all --locked
+
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
+    needs:
+      - verify
     runs-on: "ubuntu-22.04"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
       tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
       publishing: ${{ !github.event.pull_request }}
+      version: ${{ steps.version.outputs.version }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -60,6 +95,20 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - name: Determine release version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Unable to determine release version from tag $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+      - name: Apply release version bumps
+        run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
@@ -179,6 +228,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - name: Set release version env
+        run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+      - name: Apply release version bumps
+        run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
       - name: Install cached dist
         uses: actions/download-artifact@v4
         with:
@@ -229,6 +284,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - name: Set release version env
+        run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+      - name: Apply release version bumps
+        run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
       - name: Install cached dist
         uses: actions/download-artifact@v4
         with:
@@ -278,14 +339,61 @@ jobs:
 
           gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
+  publish:
+    needs:
+      - plan
+      - host
+    if: ${{ needs.plan.outputs.publishing == 'true' && needs.host.result == 'success' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Set release version env
+        run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+      - name: Apply release version bumps
+        run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
+      - name: Install workspace dependencies
+        working-directory: packages
+        run: bun install
+      - name: Build npm package
+        working-directory: packages/npm
+        run: bun run build
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        working-directory: packages/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.5.2
+      - name: Publish to JSR
+        working-directory: packages/deno
+        run: deno publish
+      - name: Publish Brew formula (TODO)
+        run: echo "Brew publish steps go here"
+
   announce:
     needs:
       - plan
       - host
+      - publish
     # use "always() && ..." to allow us to wait for all publish jobs while
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!
-    if: ${{ always() && needs.host.result == 'success' }}
+    if: ${{ always() && needs.host.result == 'success' && (needs.publish.result == 'skipped' || needs.publish.result == 'success') }}
     runs-on: "ubuntu-22.04"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

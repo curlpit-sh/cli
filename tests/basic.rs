@@ -100,6 +100,7 @@ fn import_curl_command_performs_substitutions() -> Result<()> {
     let result = import_curl_command(&ImportOptions {
         command: r#"curl -X POST https://api.example.com/widgets -H 'Authorization: Bearer secret-token' -H 'Content-Type: application/json' -d '{"ok":true}'"#,
         template_variables: &template_vars,
+        template_variants: &[],
         env_variables: &env_vars,
         include_headers: None,
         exclude_headers: None,

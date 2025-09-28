@@ -38,7 +38,11 @@ pub(crate) fn import_via_curl_parser(options: &ImportOptions<'_>) -> Result<Impo
         Some(parsed.body.join("\n"))
     };
 
-    let substitutions = build_substitutions(options.template_variables, options.env_variables);
+    let substitutions = build_substitutions(
+        options.template_variables,
+        options.env_variables,
+        options.template_variants,
+    );
 
     let substituted_url = apply_substitutions(&url, &substitutions);
     let substituted_headers: Vec<(String, String)> = headers
@@ -98,6 +102,7 @@ mod tests {
         ImportOptions {
             command,
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: None,
             exclude_headers: None,
@@ -131,6 +136,7 @@ mod tests {
         let options = ImportOptions {
             command: "curl https://api.example.com --header 'Accept: */*' --header 'X-Remove: yes'",
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: Some(&include),
             exclude_headers: Some(&exclude),
