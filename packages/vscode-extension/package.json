@@ -2,7 +2,7 @@
   "name": "curlpit",
   "displayName": "Curlpit",
   "description": "Syntax highlighting for Curlpit .curl request files",
-  "version": "0.3.0",
+  "version": "0.0.0-dev",
   "publisher": "curlpit",
   "engines": {
     "vscode": "^1.80.0"

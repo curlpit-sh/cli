@@ -1,0 +1,58 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "@curlpit/workspace",
+      "devDependencies": {
+        "@types/bun": "^1.2.22",
+      },
+    },
+    "deno": {
+      "name": "@curlpit/deno",
+      "version": "0.0.0-dev",
+      "devDependencies": {
+        "@curlpit/scripts": "workspace:*",
+        "@types/deno": "^2.3.0",
+      },
+    },
+    "npm": {
+      "name": "curlpit",
+      "version": "0.0.0-dev",
+      "bin": {
+        "curlpit": "dist/run.js",
+        "crlp": "dist/run.js",
+      },
+      "devDependencies": {
+        "@curlpit/scripts": "workspace:*",
+      },
+    },
+    "scripts": {
+      "name": "@curlpit/scripts",
+      "version": "0.0.0-dev",
+      "bin": {
+        "bump-version": "bin/bump-version.ts",
+      },
+    },
+  },
+  "packages": {
+    "@curlpit/deno": ["@curlpit/deno@workspace:deno"],
+
+    "@curlpit/scripts": ["@curlpit/scripts@workspace:scripts"],
+
+    "@types/bun": ["@types/bun@1.2.22", "", { "dependencies": { "bun-types": "1.2.22" } }, "sha512-5A/KrKos2ZcN0c6ljRSOa1fYIyCKhZfIVYeuyb4snnvomnpFqC0tTsEkdqNxbAgExV384OETQ//WAjl3XbYqQA=="],
+
+    "@types/deno": ["@types/deno@2.3.0", "", {}, "sha512-/4SyefQpKjwNKGkq9qG3Ln7MazfbWKvydyVFBnXzP5OQA4u1paoFtaOe1iHKycIWHHkhYag0lPxyheThV1ijzw=="],
+
+    "@types/node": ["@types/node@24.5.2", "", { "dependencies": { "undici-types": "~7.12.0" } }, "sha512-FYxk1I7wPv3K2XBaoyH2cTnocQEu8AOZ60hPbsyukMPLv5/5qr7V1i8PLHdl6Zf87I+xZXFvPCXYjiTFq+YSDQ=="],
+
+    "@types/react": ["@types/react@19.1.15", "", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-+kLxJpaJzXybyDyFXYADyP1cznTO8HSuBpenGlnKOAkH4hyNINiywvXS/tGJhsrGGP/gM185RA3xpjY0Yg4erA=="],
+
+    "bun-types": ["bun-types@1.2.22", "", { "dependencies": { "@types/node": "*" }, "peerDependencies": { "@types/react": "^19" } }, "sha512-hwaAu8tct/Zn6Zft4U9BsZcXkYomzpHJX28ofvx7k0Zz2HNz54n1n+tDgxoWFGB4PcFvJXJQloPhaV2eP3Q6EA=="],
+
+    "csstype": ["csstype@3.1.3", "", {}, "sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw=="],
+
+    "curlpit": ["curlpit@workspace:npm"],
+
+    "undici-types": ["undici-types@7.12.0", "", {}, "sha512-goOacqME2GYyOZZfb5Lgtu+1IDmAlAEu5xnD3+xTzS10hT0vzpf0SPjkXwAw9Jm+4n/mQGDP3LO8CPbYROeBfQ=="],
+  }
+}

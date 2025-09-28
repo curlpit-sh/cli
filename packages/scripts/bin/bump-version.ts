@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
-import { readFile, writeFile } from "fs/promises";
-import { resolve } from "path";
+import { readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface Descriptor {
   path: string;
@@ -26,6 +27,10 @@ if (!/^\d+\.\d+\.\d+(-[A-Za-z0-9-.]+)?$/.test(newVersion)) {
   process.exit(1);
 }
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const repoRoot = resolve(__dirname, "../../..");
+
 const files: Descriptor[] = [
   {
     path: "Cargo.toml",
@@ -45,15 +50,14 @@ const files: Descriptor[] = [
         regex: /(name = "curlpit"\nversion = ")([^"]+)(")/m,
         replacer: (_match, pre, _version, post) => `${pre}${newVersion}${post}`,
       },
-      {
-        type: "text",
-        regex: /(name = "curlpit-wasm"\nversion = ")([^"]+)(")/m,
-        replacer: (_match, pre, _version, post) => `${pre}${newVersion}${post}`,
-      },
     ],
   },
   {
     path: "packages/npm/package.json",
+    updates: [{ type: "json", jsonPointer: "/version" }],
+  },
+  {
+    path: "packages/deno/package.json",
     updates: [{ type: "json", jsonPointer: "/version" }],
   },
   {
@@ -65,13 +69,17 @@ const files: Descriptor[] = [
     updates: [{ type: "json", jsonPointer: "/version" }],
   },
   {
-    path: "packages/deno/install.ts",
+    path: "packages/scripts/package.json",
+    updates: [{ type: "json", jsonPointer: "/version" }],
+  },
+  {
+    path: "packages/deno/src/index.ts",
     updates: [
       {
         type: "text",
-        regex:
-          /(const version = env\.get\("CURLPIT_VERSION"\) \?\? ")v?([^"]+)(")/,
-        replacer: (_match, pre, _current, post) => `${pre}v${newVersion}${post}`,
+        regex: /(const version = env\("CURLPIT_VERSION"\) \?\? ")v?([^"]+)(")/,
+        replacer: (_match, pre, _current, post) =>
+          `${pre}v${newVersion}${post}`,
       },
     ],
   },
@@ -85,7 +93,8 @@ const files: Descriptor[] = [
       },
       {
         type: "text",
-        regex: /(url "https:\/\/github\.com\/curlpit-sh\/cli\/archive\/refs\/tags\/v)[^"@]+(\.tar\.gz")/,
+        regex:
+          /(url "https:\/\/github\.com\/curlpit-sh\/cli\/archive\/refs\/tags\/v)[^"@]+(\.tar\.gz")/,
         replacer: (_match, pre, suffix) => `${pre}${newVersion}${suffix}`,
       },
     ],
@@ -130,24 +139,34 @@ const files: Descriptor[] = [
       },
     ],
   },
+  {
+    path: "packages/package.json",
+    updates: [{ type: "json", jsonPointer: "/version" }],
+  },
 ];
 
 async function updateFile(descriptor: Descriptor) {
-  const fullPath = resolve(descriptor.path);
+  const fullPath = resolve(repoRoot, descriptor.path);
   let content = await readFile(fullPath, "utf8");
-  let original = content;
+  const original = content;
 
   for (const update of descriptor.updates) {
     switch (update.type) {
       case "json":
-        content = applyJson(content, update.jsonPointer!);
+        content = update.jsonPointer
+          ? applyJson(content, update.jsonPointer)
+          : content;
         break;
       case "text":
         if (!update.regex || !update.replacer) {
-          throw new Error(`text update for ${descriptor.path} missing regex/replacer`);
+          throw new Error(
+            `text update for ${descriptor.path} missing regex/replacer`,
+          );
         }
         if (!update.regex.test(content)) {
-          console.warn(`warning: pattern ${update.regex} not found in ${descriptor.path}`);
+          console.warn(
+            `warning: pattern ${update.regex} not found in ${descriptor.path}`,
+          );
         }
         content = content.replace(update.regex, update.replacer);
         break;
@@ -165,7 +184,7 @@ async function updateFile(descriptor: Descriptor) {
 function applyJson(content: string, pointer: string): string {
   const data = JSON.parse(content);
   setByPointer(data, pointer, newVersion);
-  return JSON.stringify(data, null, 2) + "\n";
+  return `${JSON.stringify(data, null, 2)}\n`;
 }
 
 function setByPointer(target: unknown, pointer: string, value: unknown) {
@@ -173,6 +192,7 @@ function setByPointer(target: unknown, pointer: string, value: unknown) {
     throw new Error(`pointer must start with '/': ${pointer}`);
   }
   const parts = pointer.split("/").slice(1);
+  // biome-ignore lint/suspicious/noExplicitAny: Ignore
   let obj: any = target;
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];

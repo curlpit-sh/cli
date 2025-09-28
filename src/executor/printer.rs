@@ -75,6 +75,7 @@ fn format_body_link(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::executor::models::{ExecutionResult, RequestSummary, ResponseSummary};
     use tempfile::tempdir;
 
     #[test]
@@ -94,5 +95,57 @@ mod tests {
         let link = format_body_link(relative);
         assert!(link.contains("relative.bin"));
         assert!(!link.contains("\u{1b}]8;;"));
+    }
+
+    #[test]
+    fn print_execution_result_handles_success() {
+        let temp = tempdir().unwrap();
+        let body_path = temp.path().join("body.json");
+        std::fs::write(&body_path, "{}").unwrap();
+
+        let result = ExecutionResult {
+            request: RequestSummary {
+                method: "GET".to_string(),
+                url: "https://example.com/resource".to_string(),
+                body_bytes: Some(12),
+            },
+            response: ResponseSummary {
+                status: 200,
+                headers: vec![("content-type".to_string(), "application/json".to_string())],
+                duration_ms: 12.5,
+                body_path: body_path.clone(),
+                body_bytes: 2,
+                preview: Some("{}".to_string()),
+            },
+            env_files: vec![body_path.clone()],
+        };
+
+        print_execution_result(&result);
+    }
+
+    #[test]
+    fn print_execution_result_handles_errors() {
+        let temp = tempdir().unwrap();
+        let body_path = temp.path().join("body.bin");
+        std::fs::write(&body_path, b"binary").unwrap();
+
+        let result = ExecutionResult {
+            request: RequestSummary {
+                method: "POST".to_string(),
+                url: "https://example.com/error".to_string(),
+                body_bytes: None,
+            },
+            response: ResponseSummary {
+                status: 404,
+                headers: vec![("x-trace".to_string(), "abc".to_string())],
+                duration_ms: 42.0,
+                body_path,
+                body_bytes: 6,
+                preview: None,
+            },
+            env_files: Vec::new(),
+        };
+
+        print_execution_result(&result);
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "curlpit"
-version = "0.3.0"
+version = "0.0.0-dev"
 edition = "2021"
 repository = "https://github.com/curlpit-sh/cli"
 
@@ -55,6 +55,13 @@ curl-parser = { version = "0.6", default-features = false, optional = true }
 pretty_assertions = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+httpmock = "0.7"
+assert_cmd = "2"
+assert_fs = "1"
+predicates = "3"
+
+[build-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [profile.dist]
 inherits = "release"

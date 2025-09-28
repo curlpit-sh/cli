@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "types": ["@types/deno", "@types/bun"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node"
+  },
+  "include": ["src/**/*.ts"]
+}

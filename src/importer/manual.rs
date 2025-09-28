@@ -29,7 +29,11 @@ pub(crate) fn import_via_manual(options: &ImportOptions<'_>) -> Result<ImportRes
         .clone()
         .ok_or_else(|| anyhow!("Unable to determine request URL"))?;
 
-    let substitutions = build_substitutions(options.template_variables, options.env_variables);
+    let substitutions = build_substitutions(
+        options.template_variables,
+        options.env_variables,
+        options.template_variants,
+    );
     let substituted_url = apply_substitutions(&url, &substitutions);
     let substituted_headers: Vec<(String, String)> = parsed
         .headers
@@ -282,6 +286,7 @@ mod tests {
         ImportOptions {
             command,
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: None,
             exclude_headers: None,
@@ -316,6 +321,7 @@ mod tests {
             command:
                 "curl https://api.example.com --header 'Accept: */*' --header 'X-Custom: keep'",
             template_variables: &TEMPLATE,
+            template_variants: &[],
             env_variables: &ENV,
             include_headers: Some(&include),
             exclude_headers: Some(&exclude),
@@ -327,5 +333,40 @@ mod tests {
         assert!(!result.contents.contains("X-Custom"));
         assert!(result.contents.contains("X-Trace: trace-id"));
         Ok(())
+    }
+
+    #[test]
+    fn manual_import_handles_inline_json_and_user() -> Result<()> {
+        let command = r#"curl --json='{"ok":true}' -uuser:token -HAccept:*/* --url=https://api.example.com/data"#;
+        let result = import_via_manual(&options(command))?;
+
+        assert!(result.contents.contains("Content-Type: application/json"));
+        assert!(result.contents.contains("Authorization: Basic user:token"));
+        assert!(result.url.contains("{API_BASE}"));
+        assert_eq!(result.method, "POST");
+        Ok(())
+    }
+
+    #[test]
+    fn manual_import_supports_data_shortcuts() -> Result<()> {
+        let command = "curl https://api.example.com --data-urlencode=foo=bar --data-raw=test";
+        let result = import_via_manual(&options(command))?;
+
+        assert!(result.contents.contains("test"));
+        Ok(())
+    }
+
+    #[test]
+    fn manual_import_errors_when_missing_value() {
+        let err =
+            import_via_manual(&options("curl -H")).expect_err("missing value should produce error");
+        assert!(err.to_string().contains("missing value"));
+    }
+
+    #[test]
+    fn manual_import_requires_curl_prefix() {
+        let err = import_via_manual(&options("http https://example.com"))
+            .expect_err("non curl commands should be rejected");
+        assert!(err.to_string().contains("Command must start"));
     }
 }

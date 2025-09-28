@@ -198,6 +198,7 @@ mod tests {
             profile_name: None,
             response_output_dir: None,
             default_headers: HashMap::new(),
+            template_variants: Vec::new(),
         }
     }
 

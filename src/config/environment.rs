@@ -19,6 +19,7 @@ pub struct EnvironmentContext {
     pub profile_name: Option<String>,
     pub response_output_dir: Option<PathBuf>,
     pub default_headers: HashMap<String, String>,
+    pub template_variants: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,12 +58,26 @@ impl EnvironmentBuilder {
         let mut initial_env: EnvMap = HashMap::new();
         let mut response_output_dir = self.explicit_output_dir.clone();
         let mut default_headers: HashMap<String, String> = HashMap::new();
+        let mut template_variants: Vec<(String, String)> = Vec::new();
 
         if let Some(cfg) = &self.config {
             let profile = resolve_profile(&cfg.config, self.requested_profile.as_deref())?;
             profile_name = Some(profile.name.clone());
             template_variables.extend(cfg.config.variables.clone());
             template_variables.extend(profile.config.variables.clone());
+
+            // Collect variable values from other profiles for placeholder substitution
+            for other in cfg.config.profiles.values() {
+                for (key, value) in &other.variables {
+                    if template_variables
+                        .get(key)
+                        .map(|existing| existing != value)
+                        .unwrap_or(true)
+                    {
+                        template_variants.push((key.clone(), value.clone()));
+                    }
+                }
+            }
 
             initial_env.extend(template_variables.clone());
 
@@ -124,6 +139,7 @@ impl EnvironmentBuilder {
             profile_name,
             response_output_dir,
             default_headers,
+            template_variants,
         })
     }
 }

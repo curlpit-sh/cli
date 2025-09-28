@@ -5,6 +5,7 @@ pub struct ImportOptions<'a> {
     pub command: &'a str,
     pub template_variables: &'a HashMap<String, String>,
     pub env_variables: &'a HashMap<String, String>,
+    pub template_variants: &'a [(String, String)],
     pub include_headers: Option<&'a [String]>,
     pub exclude_headers: Option<&'a [String]>,
     pub append_headers: Option<&'a HashMap<String, String>>,

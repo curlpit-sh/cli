@@ -6,6 +6,7 @@ use url::Url;
 pub(crate) fn build_substitutions(
     template_vars: &HashMap<String, String>,
     env_vars: &HashMap<String, String>,
+    variants: &[(String, String)],
 ) -> Vec<(String, String)> {
     let mut entries: Vec<(String, String)> = template_vars
         .iter()
@@ -19,6 +20,13 @@ pub(crate) fn build_substitutions(
         })
         .collect();
 
+    for (key, value) in variants {
+        if !value.is_empty() {
+            entries.push((key.clone(), value.clone()));
+        }
+    }
+
+    // Sort longest value first to avoid partial replacements
     entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
     entries
 }
@@ -103,7 +111,7 @@ mod tests {
         let mut template = HashMap::new();
         template.insert("LONG".to_string(), "abcdef".to_string());
         template.insert("SHORT".to_string(), "abc".to_string());
-        let substitutions = build_substitutions(&template, &HashMap::new());
+        let substitutions = build_substitutions(&template, &HashMap::new(), &[]);
 
         let replaced = apply_substitutions("abcdef", &substitutions);
         assert_eq!(replaced, "{LONG}");

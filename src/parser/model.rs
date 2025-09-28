@@ -43,3 +43,32 @@ impl From<&RequestDefinition> for RequestTemplate {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn request_template_from_definition_preserves_fields() {
+        let definition = RequestDefinition {
+            method: "POST".to_string(),
+            url: "https://example.com".to_string(),
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            body: Some(RequestBody::Text("{}".to_string())),
+            body_bytes: Some(2),
+            body_text: Some("{}".to_string()),
+            body_file: Some(PathBuf::from("payload.json")),
+        };
+
+        let template = RequestTemplate::from(&definition);
+        assert_eq!(template.method, "POST");
+        assert_eq!(template.url, "https://example.com");
+        assert_eq!(template.headers.len(), 1);
+        assert_eq!(template.body_text.as_deref(), Some("{}"));
+        assert_eq!(
+            template.body_file.as_deref(),
+            Some(Path::new("payload.json"))
+        );
+    }
+}

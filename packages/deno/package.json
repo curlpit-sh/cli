@@ -1,0 +1,12 @@
+{
+  "name": "@curlpit/deno",
+  "version": "0.0.0-dev",
+  "type": "module",
+  "scripts": {
+    "dist": "deno bundle ./src/index.ts -o dist/index.js"
+  },
+  "devDependencies": {
+    "@types/deno": "^2.3.0",
+    "@curlpit/scripts": "workspace:*"
+  }
+}

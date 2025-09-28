@@ -103,6 +103,10 @@ fn collect_headers(headers: &HeaderMap) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::EnvironmentBuilder;
+    use anyhow::Result;
+    use httpmock::prelude::*;
+    use tempfile::tempdir;
 
     #[test]
     fn collect_headers_preserves_values() {
@@ -117,5 +121,60 @@ mod tests {
         assert!(headers
             .iter()
             .any(|(name, value)| name == "content-type" && value == "application/json"));
+    }
+
+    #[tokio::test]
+    async fn execute_request_file_writes_preview_and_body() -> Result<()> {
+        let server = MockServer::start_async().await;
+        let _mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/items");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body("{\"ok\":true}");
+            })
+            .await;
+
+        let temp = tempdir()?;
+        let request_path = temp.path().join("sample.curl");
+        std::fs::write(&request_path, format!("GET {}/items\n", server.url("")))?;
+
+        let response_dir = temp.path().join("responses");
+        let builder = EnvironmentBuilder::new(
+            temp.path().to_path_buf(),
+            temp.path().to_path_buf(),
+            None,
+            None,
+            None,
+            Some(response_dir.clone()),
+        );
+
+        let environment = builder.build().await?;
+
+        let result = execute_request_file(
+            &request_path,
+            ExecutionOptions {
+                preview_bytes: Some(5),
+                environment: &environment,
+                response_output_dir: environment.response_output_dir.clone(),
+            },
+        )
+        .await?;
+
+        assert_eq!(result.response.status, 200);
+        assert_eq!(result.request.method, "GET");
+        let preview = result.response.preview.as_deref().unwrap();
+        assert_eq!(preview, r#"{"ok""#);
+        assert!(result.response.body_path.starts_with(&response_dir));
+        assert_eq!(
+            result
+                .response
+                .body_path
+                .extension()
+                .and_then(|s| s.to_str()),
+            Some("json")
+        );
+
+        Ok(())
     }
 }

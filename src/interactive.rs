@@ -5,16 +5,26 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Local};
-use inquire::{Confirm, Select, Text};
+use inquire::{Confirm, InquireError, Select, Text};
 use walkdir::WalkDir;
 
 use crate::{
     config::{load_config, EnvironmentBuilder, LoadedConfig},
     executor::{execute_request_file, print_execution_result, ExecutionOptions},
-    importer::{import_curl_command, ImportOptions},
+    importer::{import_curl_command, ImportOptions, ImportResult},
 };
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
+#[cfg(not(test))]
+const RELEASE_URL: &str = "https://github.com/curlpit-sh/cli/releases/latest";
+
+#[cfg(not(test))]
+use reqwest::header::{ACCEPT, USER_AGENT};
+#[cfg(not(test))]
+use serde::Deserialize;
 
 #[derive(Clone)]
 pub struct InteractiveOptions {
@@ -27,13 +37,34 @@ pub struct InteractiveOptions {
     pub explicit_output_dir: Option<PathBuf>,
 }
 
-pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
+pub async fn run_interactive(options: InteractiveOptions) -> Result<()> {
+    let mut ui = InquireUi;
+    run_interactive_with_ui(options, &mut ui).await
+}
+
+pub(crate) async fn run_interactive_with_ui(
+    mut options: InteractiveOptions,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
     let mut profile = options.requested_profile.clone();
     let mut files = discover_curl_files(&options.base_dir)?;
 
+    ui.print(&format!("curlpit v{} (built {})", VERSION, BUILD_TIMESTAMP));
+
+    if maybe_offer_project_creation(&mut options, &mut profile, ui)? {
+        files = discover_curl_files(&options.base_dir)?;
+    }
+
+    if let Err(err) = maybe_check_for_updates(&options, ui).await {
+        ui.print(&format!("Update check failed: {err}"));
+    }
+
     loop {
         if files.is_empty() {
-            println!("No .curl files found under {}", options.base_dir.display());
+            ui.print(&format!(
+                "No .curl files found under {}",
+                options.base_dir.display()
+            ));
             return Ok(());
         }
 
@@ -48,9 +79,12 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
         menu_items.push(MenuItem::Import);
         menu_items.push(MenuItem::Quit);
 
-        let choice = Select::new("curlpit", menu_items)
-            .with_page_size(10)
-            .prompt()?;
+        let labels: Vec<String> = menu_items.iter().map(|item| item.to_string()).collect();
+        let index = ui.select("curlpit", &labels, 0)?;
+        let choice = menu_items
+            .get(index)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("invalid menu selection"))?;
 
         match choice {
             MenuItem::Run(file) => {
@@ -63,11 +97,12 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
                     options.explicit_output_dir.clone(),
                 );
                 let env = builder.build().await?;
-                println!(
-                    "\nRunning {} (profile: {})\n",
+                ui.print("");
+                ui.print(&format!(
+                    "Running {} (profile: {})\n",
                     file.relative.display(),
                     env.profile_name.as_deref().unwrap_or("<none>")
-                );
+                ));
 
                 match execute_request_file(
                     &file.absolute,
@@ -83,11 +118,11 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
                         print_execution_result(&result);
                     }
                     Err(err) => {
-                        eprintln!("Error: {err:?}");
+                        ui.print(&format!("Error: {err:?}"));
                     }
                 }
 
-                let _ = Text::new("Press Enter to continue").prompt();
+                let _ = ui.input("Press Enter to continue", Some(""));
             }
             MenuItem::Refresh => {
                 files = discover_curl_files(&options.base_dir)?;
@@ -107,14 +142,14 @@ pub async fn run_interactive(mut options: InteractiveOptions) -> Result<()> {
             }
             MenuItem::ChangeProfile => {
                 if let Some(cfg) = &options.config {
-                    profile = Some(prompt_profile(cfg, profile.as_deref())?);
+                    profile = Some(prompt_profile(ui, cfg, profile.as_deref())?);
                 } else {
-                    println!("No configuration to select profiles from");
+                    ui.print("No configuration to select profiles from");
                 }
             }
             MenuItem::Import => {
-                if let Err(error) = handle_import(&options, &mut profile).await {
-                    eprintln!("Import failed: {error}");
+                if let Err(error) = handle_import(&options, &mut profile, ui).await {
+                    ui.print(&format!("Import failed: {error}"));
                 } else {
                     files = discover_curl_files(&options.base_dir)?;
                 }
@@ -167,6 +202,56 @@ impl fmt::Display for MenuItem {
     }
 }
 
+pub(crate) trait InteractiveUi {
+    fn print(&mut self, message: &str);
+    fn select(&mut self, prompt: &str, items: &[String], start: usize) -> Result<usize>;
+    fn input(&mut self, prompt: &str, default: Option<&str>) -> Result<Option<String>>;
+    fn confirm(&mut self, prompt: &str, default: bool) -> Result<bool>;
+    fn read_multiline(&mut self, prompt: &str) -> Result<Option<String>>;
+}
+
+struct InquireUi;
+
+impl InteractiveUi for InquireUi {
+    fn print(&mut self, message: &str) {
+        println!("{}", message);
+    }
+
+    fn select(&mut self, prompt: &str, items: &[String], start: usize) -> Result<usize> {
+        let choice = Select::new(prompt, items.to_vec())
+            .with_page_size(10)
+            .with_starting_cursor(start)
+            .prompt()?;
+        items
+            .iter()
+            .position(|item| item == &choice)
+            .ok_or_else(|| anyhow!("selection not found"))
+    }
+
+    fn input(&mut self, prompt: &str, default: Option<&str>) -> Result<Option<String>> {
+        let mut builder = Text::new(prompt);
+        if let Some(value) = default {
+            builder = builder.with_default(value);
+        }
+        match builder.prompt() {
+            Ok(value) => Ok(Some(value)),
+            Err(InquireError::OperationCanceled | InquireError::OperationInterrupted) => Ok(None),
+            Err(other) => Err(other.into()),
+        }
+    }
+
+    fn confirm(&mut self, prompt: &str, default: bool) -> Result<bool> {
+        match Confirm::new(prompt).with_default(default).prompt() {
+            Ok(value) => Ok(value),
+            Err(other) => Err(other.into()),
+        }
+    }
+
+    fn read_multiline(&mut self, prompt: &str) -> Result<Option<String>> {
+        read_multiline_from_stdin(prompt)
+    }
+}
+
 fn discover_curl_files(base_dir: &Path) -> Result<Vec<CurlFile>> {
     let mut files = Vec::new();
     for entry in WalkDir::new(base_dir).into_iter().filter_map(|e| e.ok()) {
@@ -192,7 +277,11 @@ fn discover_curl_files(base_dir: &Path) -> Result<Vec<CurlFile>> {
     Ok(files)
 }
 
-fn prompt_profile(config: &LoadedConfig, current: Option<&str>) -> Result<String> {
+fn prompt_profile(
+    ui: &mut dyn InteractiveUi,
+    config: &LoadedConfig,
+    current: Option<&str>,
+) -> Result<String> {
     let mut profiles: Vec<String> = config.config.profiles.keys().cloned().collect();
     profiles.sort();
 
@@ -206,35 +295,257 @@ fn prompt_profile(config: &LoadedConfig, current: Option<&str>) -> Result<String
         .position(|name| name == &default_profile)
         .unwrap_or(0);
 
-    let selection = Select::new("Select profile", profiles)
-        .with_starting_cursor(start)
-        .prompt()?;
-
-    Ok(selection)
+    let index = ui.select("Select profile", &profiles, start)?;
+    profiles
+        .get(index)
+        .cloned()
+        .ok_or_else(|| anyhow!("invalid profile selection"))
 }
 
-async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String>) -> Result<()> {
-    println!("Paste a curl command. Finish with an empty line (or press Ctrl+C to cancel).");
-    let command = match read_multiline_command()? {
+async fn handle_import(
+    options: &InteractiveOptions,
+    profile: &mut Option<String>,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    ui.print("Paste a curl command. Finish with an empty line (or press Ctrl+C to cancel).");
+    let command = match ui.read_multiline("curl>")? {
         Some(value) => value,
         None => {
-            println!("Import cancelled.");
+            ui.print("Import cancelled.");
             return Ok(());
         }
     };
 
     if command.trim().is_empty() {
-        println!("Import cancelled (empty command).");
+        ui.print("Import cancelled (empty command).");
         return Ok(());
     }
 
-    let normalized = normalize_command(&command);
+    let prepared = prepare_import(options, profile.as_deref(), &command).await?;
+    let PreparedImport {
+        import,
+        default_name,
+    } = prepared;
+
+    if !import.warnings.is_empty() {
+        ui.print("Warnings:");
+        for warning in &import.warnings {
+            ui.print(&format!(" - {}", warning));
+        }
+    }
+
+    let save_as = match ui.input("Save as", Some(&default_name))? {
+        Some(value) => value.trim().to_string(),
+        None => {
+            ui.print("Import cancelled.");
+            return Ok(());
+        }
+    };
+
+    if save_as.is_empty() {
+        ui.print("Import cancelled (empty file name).");
+        return Ok(());
+    }
+
+    let save_path = resolve_save_path(&options.base_dir, &save_as, &default_name);
+
+    let allow_overwrite = if save_path.exists() {
+        if ui.confirm("File exists. Overwrite?", false)? {
+            true
+        } else {
+            ui.print("Import cancelled.");
+            return Ok(());
+        }
+    } else {
+        true
+    };
+
+    let display = write_imported_file(
+        &save_path,
+        &options.base_dir,
+        &import.contents,
+        allow_overwrite,
+    )?;
+    ui.print(&format!("Imported request written to {}", display));
+
+    Ok(())
+}
+
+fn maybe_offer_project_creation(
+    options: &mut InteractiveOptions,
+    profile: &mut Option<String>,
+    ui: &mut dyn InteractiveUi,
+) -> Result<bool> {
+    if options.config.is_some() {
+        return Ok(false);
+    }
+
+    let project_dir = options.base_dir.join(".curlpit");
+    if project_dir.exists() {
+        return Ok(false);
+    }
+
+    if ui.confirm("No curlpit project found. Create one here?", true)? {
+        create_project_scaffold(&options.base_dir)?;
+        ui.print("Created .curlpit project with sample request");
+        options.config = load_config(&options.config_target)?;
+        if profile.is_none() {
+            if let Some(cfg) = options.config.as_ref() {
+                *profile = cfg.config.default_profile.clone();
+            }
+        }
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+fn create_project_scaffold(base_dir: &Path) -> Result<()> {
+    let project_dir = base_dir.join(".curlpit");
+    let requests_dir = project_dir.join("requests");
+    fs::create_dir_all(&requests_dir)?;
+
+    let config_path = project_dir.join("curlpit.json");
+    if !config_path.exists() {
+        let config_contents = r#"{
+  "$schema": "https://raw.githubusercontent.com/curlpit-sh/cli/refs/heads/main/schema.json",
+  "defaultProfile": "local",
+  "checkForUpdates": true,
+  "variables": {},
+  "profiles": {
+    "local": {
+      "variables": {
+        "API_BASE": "https://httpbin.org",
+        "API_TOKEN": "demo-token"
+      }
+    }
+  },
+  "responseOutputDir": "responses"
+}
+"#;
+        fs::write(&config_path, config_contents)?;
+    }
+
+    let sample_request = requests_dir.join("demo.curl");
+    if !sample_request.exists() {
+        let request_contents =
+            "GET {API_BASE}/get\nauthorization: Bearer {API_TOKEN}\naccept: application/json\n\n";
+        fs::write(&sample_request, request_contents)?;
+    }
+
+    let gitignore = project_dir.join(".gitignore");
+    if !gitignore.exists() {
+        fs::write(&gitignore, "requests/\n")?;
+    }
+
+    let env_path = project_dir.join(".env");
+    if !env_path.exists() {
+        let env_contents = "API_TOKEN=demo-token\n";
+        fs::write(&env_path, env_contents)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(test))]
+async fn maybe_check_for_updates(
+    options: &InteractiveOptions,
+    ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    if std::env::var("CURLPIT_NO_UPDATE_CHECK").is_ok() {
+        return Ok(());
+    }
+
+    let enabled = options
+        .config
+        .as_ref()
+        .and_then(|cfg| cfg.config.check_for_updates)
+        .unwrap_or(true);
+
+    if !enabled {
+        return Ok(());
+    }
+
+    let ReleaseResponse { tag_name, html_url } = fetch_latest_release().await?;
+    let current = normalize_version(VERSION);
+    let latest = normalize_version(&tag_name);
+
+    if latest != current {
+        let url = if html_url.is_empty() {
+            RELEASE_URL.to_string()
+        } else {
+            html_url
+        };
+        let link = terminal_link("Download now", &url);
+        ui.print(&format!(
+            "Update available: {} → {}  {}",
+            VERSION, latest, link
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+async fn maybe_check_for_updates(
+    _options: &InteractiveOptions,
+    _ui: &mut dyn InteractiveUi,
+) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(not(test))]
+#[derive(Deserialize)]
+struct ReleaseResponse {
+    tag_name: String,
+    html_url: String,
+}
+
+#[cfg(not(test))]
+async fn fetch_latest_release() -> Result<ReleaseResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.github.com/repos/curlpit-sh/cli/releases/latest")
+        .header(USER_AGENT, format!("curlpit/{VERSION}"))
+        .header(ACCEPT, "application/vnd.github+json")
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("GitHub responded with status {}", resp.status());
+    }
+
+    let body = resp.json::<ReleaseResponse>().await?;
+    Ok(body)
+}
+
+#[cfg(not(test))]
+fn normalize_version(value: &str) -> &str {
+    value.trim_start_matches('v')
+}
+
+#[cfg(not(test))]
+fn terminal_link(text: &str, url: &str) -> String {
+    format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, text)
+}
+
+struct PreparedImport {
+    import: ImportResult,
+    default_name: String,
+}
+
+async fn prepare_import(
+    options: &InteractiveOptions,
+    profile: Option<&str>,
+    command: &str,
+) -> Result<PreparedImport> {
+    let normalized = normalize_command(command);
 
     let builder = EnvironmentBuilder::new(
         options.base_dir.clone(),
         options.config_target.clone(),
         options.config.clone(),
-        profile.clone(),
+        profile.map(|s| s.to_string()),
         options.explicit_env.clone(),
         options.explicit_output_dir.clone(),
     );
@@ -261,65 +572,43 @@ async fn handle_import(options: &InteractiveOptions, profile: &mut Option<String
     let import = import_curl_command(&ImportOptions {
         command: &normalized,
         template_variables: &environment.template_variables,
+        template_variants: &environment.template_variants,
         env_variables: &environment.initial_env,
         include_headers,
         exclude_headers,
         append_headers,
     })?;
 
-    if !import.warnings.is_empty() {
-        println!("Warnings:");
-        for warning in &import.warnings {
-            println!(" - {}", warning);
-        }
-    }
-
     let default_name = import
         .suggested_filename
+        .clone()
         .unwrap_or_else(|| "request.curl".to_string());
 
-    let save_as = match Text::new("Save as").with_default(&default_name).prompt() {
-        Ok(value) => value.trim().to_string(),
-        Err(_) => {
-            println!("Import cancelled.");
-            return Ok(());
-        }
-    };
+    Ok(PreparedImport {
+        import,
+        default_name,
+    })
+}
 
-    if save_as.is_empty() {
-        println!("Import cancelled (empty file name).");
-        return Ok(());
+fn write_imported_file(
+    path: &Path,
+    base_dir: &Path,
+    contents: &str,
+    allow_overwrite: bool,
+) -> Result<String> {
+    if path.exists() && !allow_overwrite {
+        bail!("Refusing to overwrite {}", path.display());
     }
-
-    let save_path = resolve_save_path(&options.base_dir, &save_as, &default_name);
-
-    if save_path.exists() {
-        let overwrite = Confirm::new("File exists. Overwrite?")
-            .with_default(false)
-            .prompt();
-        match overwrite {
-            Ok(true) => {}
-            _ => {
-                println!("Import cancelled.");
-                return Ok(());
-            }
-        }
-    }
-
-    if let Some(parent) = save_path.parent() {
+    if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&save_path, import.contents)?;
+    fs::write(path, contents)?;
 
-    println!(
-        "Imported request written to {}",
-        save_path
-            .strip_prefix(&options.base_dir)
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| save_path.display().to_string())
-    );
-
-    Ok(())
+    let display = path
+        .strip_prefix(base_dir)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string());
+    Ok(display)
 }
 
 fn resolve_save_path(base_dir: &Path, input: &str, default_name: &str) -> PathBuf {
@@ -371,12 +660,12 @@ fn format_relative(time: SystemTime) -> String {
     datetime.format("%Y-%m-%d %H:%M").to_string()
 }
 
-fn read_multiline_command() -> Result<Option<String>> {
+fn read_multiline_from_stdin(prompt: &str) -> Result<Option<String>> {
     let stdin = io::stdin();
     let mut lines = Vec::new();
 
     loop {
-        print!("curl> ");
+        print!("{} ", prompt);
         io::stdout().flush()?;
 
         let mut buffer = String::new();
@@ -422,7 +711,9 @@ fn normalize_command(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::load_config;
     use anyhow::Result;
+    use std::collections::VecDeque;
     use tempfile::tempdir;
 
     #[test]
@@ -485,5 +776,300 @@ mod tests {
             normalized,
             "curl https://example.com    -H 'Accept: application/json'"
         );
+    }
+
+    #[tokio::test]
+    async fn prepare_import_resolves_environment_variables() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        std::fs::write(
+            base.join("curlpit.json"),
+            r#"{
+  "defaultProfile": "test",
+  "profiles": {
+    "test": {
+      "env": "example.env",
+      "variables": {
+        "API_BASE": "https://api.example.com"
+      }
+    }
+  },
+  "import": {
+    "includeHeaders": ["Authorization"]
+  }
+}
+"#,
+        )?;
+        std::fs::write(base.join("example.env"), "API_TOKEN=token-123\n")?;
+
+        let loaded = load_config(base)?.expect("config should load");
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: Some(loaded),
+            requested_profile: Some("test".to_string()),
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let command = "curl -X POST https://api.example.com/items -H 'Authorization: Bearer token-123' --data '{\"ok\":true}'";
+        let prepared =
+            prepare_import(&options, options.requested_profile.as_deref(), command).await?;
+
+        assert!(prepared.import.contents.contains("POST {API_BASE}/items"));
+        assert!(prepared
+            .import
+            .contents
+            .contains("authorization: Bearer {API_TOKEN}"));
+        assert_eq!(prepared.default_name, "post-api-example-com-items.curl");
+        Ok(())
+    }
+
+    #[test]
+    fn write_imported_file_creates_directories() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let target = base.join("requests").join("sample.curl");
+
+        let display = write_imported_file(&target, base, "GET https://example.com", true)?;
+
+        assert_eq!(display, "requests/sample.curl");
+        assert_eq!(std::fs::read_to_string(&target)?, "GET https://example.com");
+        Ok(())
+    }
+
+    #[test]
+    fn write_imported_file_respects_overwrite_flag() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        let target = base.join("existing.curl");
+        std::fs::write(&target, "old")?;
+
+        let err =
+            write_imported_file(&target, base, "new", false).expect_err("should refuse overwrite");
+        assert!(err.to_string().contains("Refusing to overwrite"));
+
+        // Allow overwrite succeeds
+        let display = write_imported_file(&target, base, "new", true)?;
+        assert_eq!(display, "existing.curl");
+        assert_eq!(std::fs::read_to_string(&target)?, "new");
+        Ok(())
+    }
+
+    #[test]
+    fn prompt_profile_uses_default_selection() -> Result<()> {
+        use crate::config::{CurlpitConfig, CurlpitProfileConfig};
+
+        let mut profiles = std::collections::HashMap::new();
+        profiles.insert("alpha".to_string(), CurlpitProfileConfig::default());
+        profiles.insert("beta".to_string(), CurlpitProfileConfig::default());
+
+        let config = LoadedConfig {
+            config: CurlpitConfig {
+                profiles: profiles.clone(),
+                default_profile: Some("beta".to_string()),
+                ..CurlpitConfig::default()
+            },
+            path: PathBuf::new(),
+            dir: PathBuf::new(),
+        };
+
+        let mut ui = TestUi::new(vec![1]);
+        let selected = prompt_profile(&mut ui, &config, Some("gamma"))?;
+        assert_eq!(selected, "beta");
+        Ok(())
+    }
+
+    struct TestUi {
+        menu: VecDeque<usize>,
+        inputs: VecDeque<Option<String>>,
+        confirms: VecDeque<bool>,
+        multiline: VecDeque<Option<String>>,
+        prints: Vec<String>,
+        selects: usize,
+    }
+
+    impl TestUi {
+        fn new(menu: Vec<usize>) -> Self {
+            Self {
+                menu: menu.into(),
+                inputs: VecDeque::new(),
+                confirms: VecDeque::new(),
+                multiline: VecDeque::new(),
+                prints: Vec::new(),
+                selects: 0,
+            }
+        }
+
+        fn with_input(mut self, value: Option<&str>) -> Self {
+            self.inputs.push_back(value.map(|s| s.to_string()));
+            self
+        }
+
+        fn with_confirm(mut self, value: bool) -> Self {
+            self.confirms.push_back(value);
+            self
+        }
+
+        fn with_multiline(mut self, value: Option<&str>) -> Self {
+            self.multiline.push_back(value.map(|s| s.to_string()));
+            self
+        }
+    }
+
+    impl InteractiveUi for TestUi {
+        fn print(&mut self, message: &str) {
+            self.prints.push(message.to_string());
+        }
+
+        fn select(&mut self, _prompt: &str, items: &[String], _start: usize) -> Result<usize> {
+            self.selects += 1;
+            let idx = self
+                .menu
+                .pop_front()
+                .ok_or_else(|| anyhow::anyhow!("unexpected menu request"))?;
+            if idx >= items.len() {
+                panic!("index {} out of bounds", idx);
+            }
+            Ok(idx)
+        }
+
+        fn input(&mut self, _prompt: &str, _default: Option<&str>) -> Result<Option<String>> {
+            Ok(self.inputs.pop_front().unwrap_or(Some(String::new())))
+        }
+
+        fn confirm(&mut self, _prompt: &str, _default: bool) -> Result<bool> {
+            Ok(self.confirms.pop_front().unwrap_or(true))
+        }
+
+        fn read_multiline(&mut self, _prompt: &str) -> Result<Option<String>> {
+            Ok(self.multiline.pop_front().unwrap_or(Some(String::new())))
+        }
+    }
+
+    #[tokio::test]
+    async fn run_interactive_with_ui_handles_empty_directory() -> Result<()> {
+        let temp = tempdir()?;
+        let options = InteractiveOptions {
+            base_dir: temp.path().to_path_buf(),
+            config_target: temp.path().to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![]).with_confirm(false);
+        run_interactive_with_ui(options, &mut ui).await?;
+        assert!(ui.prints.iter().any(|line| line.contains("No .curl files")));
+        assert_eq!(ui.selects, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_interactive_with_ui_quits_via_menu() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        std::fs::write(base.join("sample.curl"), "GET https://example.com\n")?;
+
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![3]).with_confirm(false);
+        run_interactive_with_ui(options, &mut ui).await?;
+        assert_eq!(ui.selects, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_interactive_creates_project_when_confirmed() -> Result<()> {
+        let temp = tempdir()?;
+        let options = InteractiveOptions {
+            base_dir: temp.path().to_path_buf(),
+            config_target: temp.path().to_path_buf(),
+            config: None,
+            requested_profile: None,
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let mut ui = TestUi::new(vec![4]).with_confirm(true);
+        run_interactive_with_ui(options, &mut ui).await?;
+
+        let project_dir = temp.path().join(".curlpit");
+        assert!(project_dir.exists());
+        assert!(project_dir.join("curlpit.json").exists());
+        assert!(project_dir.join("requests/demo.curl").exists());
+        let gitignore = project_dir.join(".gitignore");
+        assert!(gitignore.exists());
+        assert!(std::fs::read_to_string(gitignore)?.contains("requests/"));
+        assert!(ui
+            .prints
+            .iter()
+            .any(|line| line.contains("Created .curlpit project")));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn handle_import_uses_ui_for_multiline_and_save() -> Result<()> {
+        let temp = tempdir()?;
+        let base = temp.path();
+        std::fs::write(
+            base.join("curlpit.json"),
+            r#"{
+  "defaultProfile": "local",
+  "variables": {},
+  "profiles": {
+    "local": {
+      "variables": { "API_BASE": "http://localhost:8877" }
+    },
+    "staging": {
+      "variables": { "API_BASE": "https://staging.api.vrplatform.app" }
+    }
+  }
+}
+"#,
+        )?;
+
+        let loaded = load_config(base)?.expect("config should load");
+        let options = InteractiveOptions {
+            base_dir: base.to_path_buf(),
+            config_target: base.to_path_buf(),
+            config: Some(loaded),
+            requested_profile: Some("local".to_string()),
+            explicit_env: None,
+            preview_bytes: None,
+            explicit_output_dir: None,
+        };
+
+        let command = "curl 'https://staging.api.vrplatform.app/statements'";
+
+        let mut ui = TestUi::new(vec![])
+            .with_multiline(Some(command))
+            .with_input(Some("saved"))
+            .with_confirm(true);
+
+        let mut profile = Some("local".to_string());
+        handle_import(&options, &mut profile, &mut ui).await?;
+
+        let saved = base.join("saved.curl");
+        assert!(saved.exists());
+        let contents = std::fs::read_to_string(saved)?;
+        assert!(contents.contains("GET {API_BASE}/statements"));
+        assert!(ui
+            .prints
+            .iter()
+            .any(|line| line.contains("Imported request written")));
+        Ok(())
     }
 }
