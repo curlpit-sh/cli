@@ -1,13 +1,16 @@
 name: Publish Deno Package
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: ["completed"]
 
 jobs:
   publish-deno:
     runs-on: ubuntu-22.04
-    if: ${{ github.event.release.prerelease == false }}
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          startsWith(github.event.workflow_run.head_branch, 'v') }}
     permissions:
       contents: read
       id-token: write
@@ -15,7 +18,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
           submodules: recursive
       - name: Set up Deno
