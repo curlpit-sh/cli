@@ -1,20 +1,23 @@
 name: Publish npm Package
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: ["completed"]
 
 jobs:
   publish-npm:
     runs-on: ubuntu-22.04
-    if: ${{ github.event.release.prerelease == false }}
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          startsWith(github.event.workflow_run.head_branch, 'v') }}
     permissions:
       contents: read
     steps:
-      - name: Checkout release tag
+      - name: Checkout release commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
           submodules: recursive
       - name: Set up Node
