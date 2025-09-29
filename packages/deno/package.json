@@ -5,6 +5,9 @@
   "scripts": {
     "dist": "deno bundle ./src/index.ts -o dist/index.js"
   },
+  "dependencies": {
+    "@types/node": "^24.5.2"
+  },
   "devDependencies": {
     "@types/deno": "^2.3.0",
     "@curlpit/scripts": "workspace:*"

@@ -1,7 +1,3 @@
-// biome-ignore lint/suspicious/noTsIgnore: Deno
-// @ts-ignore Deno
-/// <reference lib="deno.ns" />
-
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -37,7 +33,10 @@ const archivePath = join(tempDir, plan.target.artifact);
 
 try {
   console.log(`Downloading ${plan.artifactUrl}`);
-  await downloadArtifact({ artifactUrl: plan.artifactUrl, destination: archivePath });
+  await downloadArtifact({
+    artifactUrl: plan.artifactUrl,
+    destination: archivePath,
+  });
 
   if (!skipChecksum) {
     console.log("Verifying checksum");
@@ -68,7 +67,11 @@ try {
   await cleanup(tempDir);
 }
 
-async function ensureBinary(source: string, destination: string, makeExecutable: boolean) {
+async function ensureBinary(
+  source: string,
+  destination: string,
+  makeExecutable: boolean,
+) {
   await ensureDir(binDir);
   await ensureExecutable({
     sourcePath: source,
