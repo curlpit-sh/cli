@@ -3,7 +3,7 @@
 Use the `install.ts` script to download the curlpit binary for the current platform directly from GitHub releases.
 
 ```bash
-deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/dist/deno/install.ts
+deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/dist/deno/src/index.ts
 ```
 
 Requires a `tar` binary with `.tar.xz` support (present on modern macOS/Linux and Windows).
