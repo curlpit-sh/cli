@@ -3,7 +3,11 @@ import type { EnvReader } from "./types";
 
 const maybeDenoEnv = (() => {
   try {
-    const deno = (globalThis as { Deno?: { env?: { get(name: string): string | undefined } } }).Deno;
+    const deno = (
+      globalThis as {
+        Deno?: { env?: { get(name: string): string | undefined } };
+      }
+    ).Deno;
     return deno?.env;
   } catch {
     return undefined;
@@ -12,6 +16,7 @@ const maybeDenoEnv = (() => {
 
 export function createEnvReader(): EnvReader {
   return (key: string) => {
+    // biome-ignore lint/complexity/useOptionalChain: Skip
     if (typeof process !== "undefined" && process.env && key in process.env) {
       return process.env[key];
     }
@@ -24,6 +29,7 @@ export function guessHomeDir(env: EnvReader): string {
 }
 
 export function inferPlatform(env: EnvReader): string {
+  // biome-ignore lint/complexity/useOptionalChain: Skip
   if (typeof process !== "undefined" && process.platform) {
     return process.platform;
   }
@@ -31,6 +37,7 @@ export function inferPlatform(env: EnvReader): string {
 }
 
 export function inferArch(env: EnvReader): string {
+  // biome-ignore lint/complexity/useOptionalChain: Skip
   if (typeof process !== "undefined" && process.arch) {
     return process.arch;
   }

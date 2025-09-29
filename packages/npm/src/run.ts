@@ -4,10 +4,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  createEnvReader,
-  determineBinaryName,
-} from "@curlpit/scripts";
+import { createEnvReader, determineBinaryName } from "@curlpit/scripts";
 
 function main() {
   const envReader = createEnvReader();
@@ -32,7 +29,7 @@ function main() {
   if (!binaryPath) {
     console.error(
       `curlpit binary is missing. Expected at ${candidatePaths.join(" or ")}.
-Try reinstalling the package or run \"npm rebuild curlpit\".`,
+Try reinstalling the package or run "npm rebuild curlpit".`,
     );
     process.exit(1);
   }
