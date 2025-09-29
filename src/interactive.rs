@@ -46,6 +46,7 @@ pub(crate) async fn run_interactive_with_ui(
     mut options: InteractiveOptions,
     ui: &mut dyn InteractiveUi,
 ) -> Result<()> {
+    align_base_dir_with_config(&mut options);
     let mut profile = options.requested_profile.clone();
     let mut files = discover_curl_files(&options.base_dir)?;
 
@@ -389,6 +390,7 @@ fn maybe_offer_project_creation(
         create_project_scaffold(&options.base_dir)?;
         ui.print("Created .curlpit project with sample request");
         options.config = load_config(&options.config_target)?;
+        align_base_dir_with_config(options);
         if profile.is_none() {
             if let Some(cfg) = options.config.as_ref() {
                 *profile = cfg.config.default_profile.clone();
@@ -527,6 +529,16 @@ fn normalize_version(value: &str) -> &str {
 #[cfg(not(test))]
 fn terminal_link(text: &str, url: &str) -> String {
     format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, text)
+}
+
+fn align_base_dir_with_config(options: &mut InteractiveOptions) {
+    if let Some(cfg) = options.config.as_ref() {
+        let cfg_dir = cfg.dir.clone();
+        if options.base_dir != cfg_dir {
+            options.base_dir = cfg_dir.clone();
+            options.config_target = cfg_dir;
+        }
+    }
 }
 
 struct PreparedImport {
