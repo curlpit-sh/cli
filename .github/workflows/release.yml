@@ -372,9 +372,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Publish to npm
         working-directory: packages/npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: npm publish --access public --provenance
       - name: Set up Deno
         uses: denoland/setup-deno@v1
         with:
