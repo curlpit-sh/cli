@@ -176,6 +176,13 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: Set release version env
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+      - name: Apply release version bumps
+        run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
