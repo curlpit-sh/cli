@@ -6,6 +6,9 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::env::{expand_placeholders, EnvMap};
+use crate::importer::{import_curl_command, ImportOptions, ImportResult};
+use crate::parser::RequestTemplate;
+use crate::template;
 
 #[derive(Debug, Error)]
 pub enum WebProcessError {
@@ -63,6 +66,48 @@ pub fn process_request(
         request,
         interpolation,
     })
+}
+
+pub fn import_curl_command_web(
+    command: &str,
+    template_variables: &HashMap<String, String>,
+    env_variables: &HashMap<String, String>,
+) -> WebResult<ImportResult> {
+    import_curl_command(&ImportOptions {
+        command,
+        template_variables,
+        template_variants: &[],
+        env_variables,
+        include_headers: None,
+        exclude_headers: None,
+        append_headers: None,
+    })
+    .map_err(|err| WebProcessError::Message(err.to_string()))
+}
+
+pub fn render_export_template_web(
+    name: &str,
+    curl: &str,
+    env: &HashMap<String, String>,
+) -> WebResult<String> {
+    let processed = process_request(curl, env)?;
+    let headers = processed
+        .request
+        .headers
+        .into_iter()
+        .map(|h| (h.name, h.value))
+        .collect();
+
+    let template = RequestTemplate {
+        method: processed.request.method,
+        url: processed.request.url,
+        headers,
+        body_text: processed.request.body.clone(),
+        body_file: None,
+    };
+
+    template::render_export_template(name, &template)
+        .map_err(|err| WebProcessError::Message(err.to_string()))
 }
 
 fn parse_request(curl: &str, env: &EnvMap) -> WebResult<WebRequest> {

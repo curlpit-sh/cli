@@ -25,7 +25,13 @@ cli = [
     "dep:shell-words",
     "dep:curl-parser",
 ]
-web = []
+web = [
+    "dep:serde_json",
+    "dep:chrono",
+    "dep:url",
+    "dep:shell-words",
+    "dep:curl-parser",
+]
 
 [dependencies]
 anyhow = "1.0"

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use serde::Serialize;
+
 #[derive(Debug, Clone)]
 pub struct ImportOptions<'a> {
     pub command: &'a str,
@@ -11,7 +13,7 @@ pub struct ImportOptions<'a> {
     pub append_headers: Option<&'a HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ImportResult {
     pub contents: String,
     pub suggested_filename: Option<String>,
