@@ -106,7 +106,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
       - name: Apply release version bumps
         shell: bash
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
@@ -182,7 +182,7 @@ jobs:
         run: |
           echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
       - name: Apply release version bumps
         shell: bash
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
@@ -241,7 +241,7 @@ jobs:
       - name: Set release version env
         run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
       - name: Apply release version bumps
         shell: bash
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
@@ -298,7 +298,7 @@ jobs:
       - name: Set release version env
         run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
       - name: Apply release version bumps
         shell: bash
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
