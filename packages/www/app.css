@@ -1,8 +1,202 @@
 @import "tailwindcss";
 
 /* Shared terminal UI styling for the playground */
+:root {
+    --terminal-bg: #0a0a0a;
+    --terminal-surface: #141414;
+    --terminal-border: #262626;
+    --terminal-text: #e5e5e5;
+    --terminal-dim: #737373;
+    --terminal-accent: #10b981;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 body {
     font-feature-settings: "liga" off;
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    background: var(--terminal-bg);
+    color: var(--terminal-text);
+    min-height: 100vh;
+    margin: 0;
+}
+
+#root {
+    min-height: 100vh;
+}
+
+.page-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.terminal-header {
+    border-bottom: 1px solid var(--terminal-border);
+    background: rgba(20, 20, 20, 0.5);
+    backdrop-filter: blur(8px);
+}
+
+.terminal-header__content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-text {
+    color: var(--terminal-accent);
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.logo-version {
+    color: var(--terminal-dim);
+    font-size: 0.75rem;
+}
+
+.header-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.875rem;
+}
+
+.header-nav a {
+    color: var(--terminal-dim);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.header-nav a:hover {
+    color: var(--terminal-text);
+}
+
+.install-btn {
+    background: var(--terminal-accent);
+    color: var(--terminal-bg);
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.install-btn:hover {
+    background: #0ea972;
+    transform: scale(1.05);
+}
+
+.playground-wrapper {
+    flex: 1;
+    padding: 1rem;
+    overflow: hidden;
+    display: flex;
+}
+
+.playground {
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.left-panes {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 1rem;
+}
+
+.pane {
+    background: var(--terminal-surface);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.pane-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--terminal-border);
+    gap: 0.75rem;
+}
+
+.pane-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.window-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.window-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    opacity: 0.5;
+}
+
+.window-dot.red {
+    background: #ef4444;
+}
+
+.window-dot.yellow {
+    background: #eab308;
+}
+
+.window-dot.green {
+    background: #22c55e;
+}
+
+.pane-title {
+    color: var(--terminal-dim);
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+}
+
+.example-select {
+    background: var(--terminal-bg);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--terminal-text);
+    font-family: inherit;
+}
+
+.example-select:focus {
+    outline: none;
+    border-color: var(--terminal-accent);
+}
+
+.editor-wrapper {
+    flex: 1;
+    overflow: auto;
 }
 
 textarea.editor {
@@ -63,6 +257,24 @@ textarea.editor::selection {
 
 .btn-secondary:hover {
     border-color: var(--terminal-dim);
+}
+
+.btn-primary {
+    background: var(--terminal-accent);
+    color: var(--terminal-bg);
+    border: none;
+    border-radius: 0.25rem;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-primary:hover {
+    background: #0ea972;
+    transform: scale(1.03);
 }
 
 .copy-btn {
@@ -166,4 +378,177 @@ textarea.editor::selection {
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.tab-group {
+    background: rgba(10, 10, 10, 0.5);
+    border-bottom: 1px solid var(--terminal-border);
+}
+
+.tab-button {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: var(--terminal-dim);
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.tab-button[data-selected],
+.tab-button.active {
+    color: var(--terminal-accent);
+}
+
+.tab-button[data-selected]::after,
+.tab-button.active::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--terminal-accent);
+}
+
+.tab-button:hover {
+    color: var(--terminal-text);
+}
+
+.response-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    height: 100%;
+}
+
+.export-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--terminal-dim);
+}
+
+.export-controls select {
+    background: var(--terminal-bg);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.25rem;
+    color: var(--terminal-text);
+    padding: 0.25rem 0.5rem;
+    font-family: inherit;
+    font-size: 0.75rem;
+}
+
+.export-controls select:focus {
+    outline: none;
+    border-color: var(--terminal-accent);
+}
+
+.export-output {
+    flex: 1;
+    background: rgba(10, 10, 10, 0.6);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    font-size: 0.8rem;
+    overflow: auto;
+    white-space: pre;
+}
+
+.export-meta {
+    font-size: 0.75rem;
+    color: var(--terminal-dim);
+}
+
+.run-btn {
+    background: var(--terminal-accent);
+    color: var(--terminal-bg);
+    border: none;
+    border-radius: 0.25rem;
+    padding: 0.375rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.run-btn:hover {
+    background: #0ea972;
+    transform: scale(1.05);
+}
+
+.import-textarea {
+    width: 100%;
+    min-height: 120px;
+    max-height: 200px;
+    background: var(--terminal-bg);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    font-family: inherit;
+    font-size: 0.8rem;
+    color: var(--terminal-text);
+    resize: vertical;
+}
+
+.import-textarea:focus {
+    outline: none;
+    border-color: var(--terminal-accent);
+}
+
+.import-summary {
+    font-size: 0.8rem;
+    color: var(--terminal-text);
+    line-height: 1.5;
+}
+
+.import-summary strong {
+    color: var(--terminal-accent);
+}
+
+.import-hints {
+    font-size: 0.75rem;
+    color: var(--terminal-dim);
+    line-height: 1.4;
+}
+
+.import-hints code {
+    color: var(--terminal-text);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.1rem 0.25rem;
+    border-radius: 0.25rem;
+}
+
+.import-status {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--terminal-dim);
+    white-space: pre-wrap;
+}
+
+@media (max-width: 1024px) {
+    .playground {
+        grid-template-columns: 1fr;
+        grid-auto-rows: minmax(0, auto);
+    }
+
+    .left-panes {
+        grid-template-rows: auto auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .terminal-header__content {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .playground-wrapper {
+        padding: 0.5rem;
+    }
 }
