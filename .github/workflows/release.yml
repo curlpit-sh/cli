@@ -397,10 +397,7 @@ jobs:
         run: deno task dist
       - name: Publish to JSR
         working-directory: packages/deno
-        run: deno publish
-      - name: Publish to JSR
-        working-directory: packages/deno
-        run: deno publish
+        run: deno publish --allow-dirty
       - name: Publish Brew formula (TODO)
         run: echo "Brew publish steps go here"
 
