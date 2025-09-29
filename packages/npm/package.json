@@ -1,9 +1,13 @@
 {
-  "name": "curlpit",
+  "name": "@curlpit/cli",
   "version": "0.0.0-dev",
   "description": "Terminal-first HTTP runner for replaying scripted requests.",
   "license": "MIT",
   "type": "module",
+  "publisher": "curlpit-sh",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/curlpit-sh/cli.git"
