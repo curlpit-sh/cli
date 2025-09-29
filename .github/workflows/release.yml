@@ -41,7 +41,7 @@ permissions:
 on:
   push:
     tags:
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      - "**[0-9]+.[0-9]+.[0-9]+*"
 
 jobs:
   verify:
@@ -368,7 +368,9 @@ jobs:
       - name: Set release version env
         run: echo "RELEASE_VERSION=${{ needs.plan.outputs.version }}" >> "$GITHUB_ENV"
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: Apply release version bumps
         shell: bash
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
@@ -387,7 +389,7 @@ jobs:
         working-directory: packages/npm
         run: npm publish --access public --provenance
       - name: Set up Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: v2.5.2
       - name: Publish to JSR
