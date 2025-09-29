@@ -24,7 +24,7 @@ The installer downloads a platform-specific binary from the matching GitHub rele
 ### Using Deno
 
 ```bash
-deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/packages/deno/install.ts
+deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/packages/deno/src/index.ts
 ```
 
 Environment variables such as `CURLPIT_VERSION`, `CURLPIT_BIN_DIR`, and `CURLPIT_SKIP_CHECKSUM` mirror the npm installer. The script expects `tar` (plus `unzip` or PowerShell on Windows) to be available on the PATH.
