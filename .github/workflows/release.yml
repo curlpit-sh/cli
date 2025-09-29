@@ -361,7 +361,7 @@ jobs:
         run: bun packages/scripts/bin/bump-version.ts "$RELEASE_VERSION"
       - name: Install workspace dependencies
         working-directory: packages
-        run: bun install
+        run: bun install --ignore-scripts
       - name: Build npm package
         working-directory: packages/npm
         run: bun run build
