@@ -392,6 +392,12 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.5.2
+      - name: Build Deno package
+        working-directory: packages/deno
+        run: deno task dist
+      - name: Publish to JSR
+        working-directory: packages/deno
+        run: deno publish
       - name: Publish to JSR
         working-directory: packages/deno
         run: deno publish
