@@ -16,7 +16,7 @@ Terminal-first HTTP runner that executes scripted requests, prints structured ou
 ### Using npm (prebuilt binaries)
 
 ```bash
-npm install --global curlpit
+npm install --global @curlpit/cli
 ```
 
 The installer downloads a platform-specific binary from the matching GitHub release. To use a locally built executable during development, set `CURLPIT_LOCAL_BINARY=/path/to/curlpit` before running `npm install`. To skip downloads entirely, set `CURLPIT_SKIP_POSTINSTALL=1`.
@@ -27,9 +27,13 @@ The installer downloads a platform-specific binary from the matching GitHub rele
 deno run -A https://raw.githubusercontent.com/curlpit-sh/cli/main/packages/deno/src/index.ts
 ```
 
+```bash
+deno install --allow-env --allow-net --allow-run --allow-read --allow-write jsr:@curlpit/cli
+```
+
 Environment variables such as `CURLPIT_VERSION`, `CURLPIT_BIN_DIR`, and `CURLPIT_SKIP_CHECKSUM` mirror the npm installer. The script expects `tar` (plus `unzip` or PowerShell on Windows) to be available on the PATH.
 
-### Homebrew tap
+### Homebrew tap (NOT YET)
 
 Copy `packages/brew/curlpit.rb` into your tap repository and update the version, tag URL, and SHA256 for each release. Users can then run:
 
@@ -46,6 +50,12 @@ cargo install --path .
 
 ## Usage
 
+### Interactive
+```bash
+curlpit
+```
+
+### Specific file
 ```bash
 curlpit examples/httpbin-get.curl --preview 200
 ```
